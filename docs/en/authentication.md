@@ -2,78 +2,117 @@
 
 [Русская версия](../ru/authentication.md) · [⌂ Home](../../README.md)
 
-The Node.js project methods (`/v2/project/nodejs/...`) work through the panel's **session token** — the same mechanism the web UI uses in the browser.
+aaPanel offers **two working ways** to call the API. Both were verified against a live panel (v8).
+
+## Which to choose
+
+| | 🔑 `api_sk` key | 🍪 Session |
+|--|-----------------|------------|
+| For | **apps, automation** | browser discovery, manual probing |
+| Lifetime | ♾️ permanent | ⏳ temporary (expires) |
+| URL | root, no security entrance | with `/apsess_.../` in the path |
+| Coverage | system + Node.js + sites + DB… | everything the panel can do |
+
+> 💡 **Verified:** the `api_sk` key reaches **both** the official (`/system?action=…`) **and** the internal (`/v2/project/nodejs/…`) endpoints. So a single permanent key can manage everything — the right choice for an app.
 
 ---
 
-## Base URL
+## Method 1 — `api_sk` key (recommended)
 
+### Panel setup
+1. **Settings → API** → enable the interface.
+2. Generate `api_sk`.
+3. Add the **IP of the machine** making the calls to the whitelist.
+
+### URL
 ```
-https://<SERVER>:<PORT>/<SESSION_TOKEN>/v2/project/nodejs/<method>
+https://<SERVER>:<PORT>/<endpoint>
+```
+⚠️ **At the root** — without the security entrance (`/xxxxxxxx`) and without the `apsess` token.
+
+### Request signature
+Two fields are added to the POST body:
+
+| Field | Value |
+|-------|-------|
+| `request_time` | current Unix timestamp |
+| `request_token` | `md5( request_time + md5(api_sk) )` |
+
+Pseudocode:
+```
+request_time  = 1780677549
+request_token = md5( "1780677549" + md5(api_sk) )
 ```
 
-| Part | Meaning |
-|------|---------|
-| `<SERVER>` | IP or domain of the aaPanel server |
-| `<PORT>` | panel port (e.g. `41192`) |
-| `<SESSION_TOKEN>` | session token `apsess_...` (see below) |
+### Example (curl + bash)
+```bash
+BASE="https://<SERVER>:<PORT>"
+SK="<API_SK>"
+T=$(date +%s)
+SK_MD5=$(printf '%s' "$SK" | md5sum | cut -d' ' -f1)
+TOKEN=$(printf '%s' "$T$SK_MD5" | md5sum | cut -d' ' -f1)
 
-**HTTP method:** `POST` for all requests.
+# Node.js: list projects
+curl -k -X POST "$BASE/v2/project/nodejs/get_project_list" \
+  --data-urlencode "request_time=$T" \
+  --data-urlencode "request_token=$TOKEN" \
+  --data-urlencode 'data={"p":1,"limit":10}'
+
+# System: server resources
+curl -k -X POST "$BASE/system?action=GetSystemTotal" \
+  --data-urlencode "request_time=$T" \
+  --data-urlencode "request_token=$TOKEN"
+```
+
+Ready-to-use TypeScript wrapper: [`examples/javascript/aapanel-client.ts`](../../examples/javascript/aapanel-client.ts).
 
 ---
 
-## Where to get the session token
+## Method 2 — session (for browser discovery)
 
-1. Log in to aaPanel in your browser.
-2. Look at the **address bar**:
-   ```
-   https://192.168.0.10:41192/apsess_xxxxxxxxEXAMPLExxxxxxxx/...
-                              └──────────── this is the token ───────────┘
-   ```
-3. The `apsess_...` part is your `SESSION_TOKEN`.
+The same access a logged-in browser has. Handy to **find** the request you need, but unsuitable for an app — the token is temporary.
 
-> ⚠️ **The token is temporary.** It changes on every new login and expires over time. So you **cannot hard-code it** — for ongoing automation an app must either log in programmatically and refresh the token, or use the official `api_sk` (see [overview.md](overview.md)).
+### URL
+```
+https://<SERVER>:<PORT>/<SESSION_TOKEN>/<endpoint>
+```
+`<SESSION_TOKEN>` is the `apsess_...` part from the browser address bar after login.
+
+### Headers
+| Header | Source |
+|--------|--------|
+| `x-http-token` | any panel request (DevTools → Network → Headers) |
+| `Cookie` | the browser session cookie |
+
+> ⚠️ Both the token and cookie are **temporary**: they change on re-login and expire over time. Don't hard-code them — use `api_sk` (Method 1) for ongoing work.
+
+---
+
+## 🔍 The "discover → execute" recipe (aaPanel's official approach)
+
+Many panel features aren't officially documented. aaPanel suggests discovering them yourself — and it works:
+
+1. **Discover (browser):** open the panel → `F12` → **Network** tab → click the feature → inspect the request it sends (path + body).
+2. **Execute (code):** take the **same path and body**, but at the root and with key auth (`request_time` + `request_token`) instead of the cookie.
+
+| | In the browser (session) | Via the key (API) |
+|--|--------------------------|-------------------|
+| Path and body | **identical** | **identical** |
+| Auth | cookie + `x-http-token` | `request_time` + `request_token` |
+| Security entrance in URL | present | **not needed** |
 
 ---
 
 ## Request body format
-
-All parameters are passed as **URL-encoded JSON** in a `data` field:
-
-```
-Content-Type: application/x-www-form-urlencoded
-
-data=<URL-encoded JSON>
-```
-
-For example, the JSON `{"p":1,"limit":10}` becomes:
-
-```
-data=%7B%22p%22%3A1%2C%22limit%22%3A10%7D
-```
-
-With `curl` this is easiest via `--data-urlencode`:
-
-```bash
-curl -k -X POST "https://<SERVER>:<PORT>/<SESSION_TOKEN>/v2/project/nodejs/get_project_list" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'data={"p":1,"limit":10,"search":"","re_order":""}'
-```
-
----
+`Content-Type: application/x-www-form-urlencoded`.
+- **Node.js** endpoints: parameters in a `data=<URL-encoded JSON>` field.
+- **System** endpoints: action in the query — `?action=GetSystemTotal`.
+- For the key, `request_time` and `request_token` are added to any request.
 
 ## SSL: self-signed certificate
-
-aaPanel typically uses a self-signed certificate, so default SSL verification will fail. For testing:
-
-- `curl` — the `-k` flag;
-- Node.js / fetch — disable certificate verification for that host.
-
-> ⚠️ Disabling SSL verification is acceptable for local testing only. In production, configure a trusted certificate for the panel or explicitly add its CA rather than globally disabling verification.
-
----
+The panel typically uses a self-signed certificate: `curl -k`, or disable verification for that host in Node.js. In production, add the panel's trusted CA rather than disabling verification globally.
 
 ## Security
-
-- The session token, and especially `api_sk`, are **secrets**. Never commit them to git; keep them in `.env` (see [`.env.example`](../../.env.example)).
-- All requests to the panel must be made **server-side**, not from the user's browser: otherwise secrets leak into client code, plus CORS and the IP whitelist will block it.
+- `api_sk`, tokens, and cookies are **secrets**. Keep them in `.env` (see [`.env.example`](../../.env.example)), never in git.
+- The `api_sk` key grants **full server access** → keep it server-side only, plus an IP whitelist.
+- All requests must be made server-side, not from the user's browser (otherwise CORS, secret leakage, IP whitelist).

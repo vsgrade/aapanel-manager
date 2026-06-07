@@ -6,13 +6,14 @@
 
 | Тема | 🇷🇺 Русский | 🇬🇧 English |
 |------|-------------|-------------|
-| Обзор API / две схемы авторизации | [ru/overview](ru/overview.md) | [en/overview](en/overview.md) |
-| Аутентификация, формат запросов, SSL | [ru/authentication](ru/authentication.md) | [en/authentication](en/authentication.md) |
-| Методы управления Node.js-проектами | [ru/nodejs-projects](ru/nodejs-projects.md) | [en/nodejs-projects](en/nodejs-projects.md) |
+| Обзор API / две схемы авторизации / рецепт | [ru/overview](ru/overview.md) | [en/overview](en/overview.md) |
+| Аутентификация (`api_sk` + сессия), SSL, безопасность | [ru/authentication](ru/authentication.md) | [en/authentication](en/authentication.md) |
+| Node.js-проекты (список, инфо, старт/стоп…) | [ru/nodejs-projects](ru/nodejs-projects.md) | [en/nodejs-projects](en/nodejs-projects.md) |
+| Мониторинг сервера (CPU/RAM/диск) | [ru/system-monitoring](ru/system-monitoring.md) | [en/system-monitoring](en/system-monitoring.md) |
 
 ## Код
 
-- TypeScript-обёртка: [`examples/javascript/aapanel-client.ts`](../examples/javascript/aapanel-client.ts)
+- TypeScript-обёртка (`AaPanelClient`, 2 режима авторизации): [`examples/javascript/aapanel-client.ts`](../examples/javascript/aapanel-client.ts)
 - Шаблон окружения: [`.env.example`](../.env.example)
 
 ## Главные страницы

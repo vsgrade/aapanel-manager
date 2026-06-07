@@ -2,32 +2,33 @@
 
 [Русская версия](../ru/overview.md) · [⌂ Home](../../README.md)
 
-aaPanel (the international edition of the BT/宝塔 panel) is a web control panel for Linux servers: websites, databases, FTP, SSL, firewall, backups, and more. Almost all of it can be automated through an HTTP API without opening the web UI.
+aaPanel (the international edition of the BT/宝塔 panel) is a web control panel for Linux servers: sites, databases, FTP, SSL, firewall, backups, Node.js projects, and more. Almost all of it can be automated via an HTTP API.
 
-This repository documents **Node.js project management** through the API — an area that the official documentation barely covers.
+This repository documents **Node.js project management** and **server monitoring**, focusing on what is poorly documented officially but verified against a live panel (v8).
 
 ---
 
-## Two ways to access the API
+## Two ways to access
 
-aaPanel effectively exposes **two different ways** to talk to the server, and it's important not to mix them up.
+### 1. The `api_sk` key (recommended for apps)
 
-### 1. Official API (permanent `api_sk` key)
+- Enable: **Settings → API** → generate the key → add the IP to the whitelist.
+- Signature: `request_token = md5( request_time + md5(api_sk) )`.
+- The **key is permanent** — it doesn't expire.
+- ✅ **Verified:** it works at the root (no security entrance) and covers **both** the official endpoints (`/system?action=…`) **and** the internal ones (`/v2/project/nodejs/…`). One key for both the server and Node.js projects.
 
-- Enabled in the panel: **Settings → API**, where you generate the `api_sk` key and configure the IP whitelist.
-- Per-request signature authentication:
-  `request_token = md5( request_time + md5(api_sk) )`
-- The **key is permanent** — it doesn't change, which is ideal for automation.
-- ⚠️ **It does not cover every feature.** The official docs ([api-list](https://www.aapanel.com/docs/api/api-list.html), [PDF](https://www.aapanel.com/Document/api.pdf)) mostly describe the "classics": system, sites, databases, FTP, SSL, cron, firewall, DNS. Node.js project management is not documented there.
+### 2. Session (for browser discovery)
 
-### 2. Internal panel interface (session token)
+- The same access a logged-in browser has: an `apsess_...` token in the URL + `x-http-token` + cookie.
+- ⏳ Temporary (expires) — unsuitable for an app, but handy to **find** the request you need.
 
-- This is the same API the panel's own web UI uses in the browser.
-- The URL contains a **session token** `apsess_...` — a temporary "pass" the panel issues to the browser after login.
-- It exposes **everything** the panel can do, including `/v2/project/nodejs/...`.
-- ⚠️ The token is **temporary**: it changes on re-login and expires over time. See [authentication.md](authentication.md).
+Details of both methods — [authentication.md](authentication.md).
 
-> 💡 **aaPanel's official stance:** anything not covered by the docs is meant to be discovered yourself — open the browser DevTools (Network tab), perform the action in the panel, and inspect the request it sends. The methods in this repository were obtained exactly this way.
+---
+
+## 🔍 The "discover → execute" recipe
+
+aaPanel's official advice for undocumented features: open the panel in a browser → DevTools (Network) → click a button → inspect the request → replay it in code. We verified this: the **same path and body** work via the permanent `api_sk` key (only the auth differs). See [authentication.md](authentication.md).
 
 ---
 
@@ -35,8 +36,9 @@ aaPanel effectively exposes **two different ways** to talk to the server, and it
 
 | Document | Contents |
 |----------|----------|
-| [authentication.md](authentication.md) | How to authenticate: session token, request format, the SSL caveat |
-| [nodejs-projects.md](nodejs-projects.md) | Node.js project methods (list, info, start/stop/restart, settings) |
+| [authentication.md](authentication.md) | Two auth schemes (`api_sk` + session), the recipe, SSL, security |
+| [nodejs-projects.md](nodejs-projects.md) | Node.js: list/info/scripts/versions/start-stop + real responses |
+| [system-monitoring.md](system-monitoring.md) | Server: CPU/RAM/disk (`GetSystemTotal`, `GetDiskInfo`) |
 
 TypeScript wrapper example: [`examples/javascript/aapanel-client.ts`](../../examples/javascript/aapanel-client.ts).
 
@@ -44,4 +46,4 @@ TypeScript wrapper example: [`examples/javascript/aapanel-client.ts`](../../exam
 
 ## Disclaimer
 
-This is **unofficial**, community documentation. The Node.js projects section is based on observing the panel's real requests and may change with aaPanel updates. Verify behavior against your own panel version. Official docs live at [aapanel.com/docs](https://www.aapanel.com/docs/).
+Unofficial community documentation. Some endpoints were obtained by observing the panel's requests and verified on a specific version (aaPanel v8). Behavior may change between versions — verify against your own panel. Official docs — [aapanel.com/docs](https://www.aapanel.com/docs/).

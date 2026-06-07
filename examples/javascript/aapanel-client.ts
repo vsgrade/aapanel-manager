@@ -1,65 +1,69 @@
 /**
- * Минимальная типизированная обёртка над API aaPanel для управления
- * Node.js-проектами (эндпоинты /v2/project/nodejs/...).
+ * Типизированная обёртка над API aaPanel: управление Node.js-проектами
+ * и мониторинг сервера. Поддерживает две схемы авторизации:
  *
- * ⚠️ ТОЛЬКО ДЛЯ СЕРВЕРА. Сессионный токен — секрет. Никогда не импортируй
- *    и не используй этот файл в клиентском (браузерном) коде: токен утечёт,
- *    плюс помешают CORS и whitelist панели по IP. В Next.js — только в
- *    route handlers / server actions / API routes.
+ *   - "apiKey"  — постоянный ключ api_sk (РЕКОМЕНДУЕТСЯ для приложений).
+ *                 URL на корне, подпись request_time + request_token.
+ *   - "session" — временная сессия браузера (apsess + x-http-token + cookie).
+ *                 Удобна для разведки, но токен протухает.
  *
- * Требования: Node.js 18+ (глобальный fetch). Документация методов:
- *   ../../docs/ru/nodejs-projects.md  ·  ../../docs/en/nodejs-projects.md
+ * ⚠️ ТОЛЬКО ДЛЯ СЕРВЕРА. Ключ api_sk даёт полный доступ к серверу — никогда
+ *    не используй этот файл в браузерном коде. В Next.js — только в route
+ *    handlers / server actions. Секреты — из переменных окружения.
+ *
+ * Требования: Node.js 18+ (глобальный fetch, node:crypto). Документация:
+ *   ../../docs/ru/authentication.md · ../../docs/ru/nodejs-projects.md
  */
+
+import { createHash } from "node:crypto";
 
 // ────────────────────────────── Типы ──────────────────────────────
 
-export interface AaPanelClientConfig {
-  /** Базовый адрес панели без слэша в конце, напр. https://192.168.0.10:41192 */
-  baseUrl: string;
-  /** Сессионный токен из адресной строки браузера (apsess_...). Временный. */
+/** Авторизация постоянным ключом api_sk (рекомендуется). */
+export interface ApiKeyAuth {
+  mode: "apiKey";
+  /** Ключ из «Настройки → API». */
+  apiSk: string;
+}
+
+/** Авторизация сессией браузера (временная). */
+export interface SessionAuth {
+  mode: "session";
+  /** Токен apsess_... из адресной строки. */
   sessionToken: string;
+  /** Заголовок x-http-token из запросов панели. */
+  httpToken: string;
+  /** Session-cookie браузера (целиком, в формате name=value). */
+  cookie: string;
+}
+
+export type AaPanelAuth = ApiKeyAuth | SessionAuth;
+
+export interface AaPanelClientConfig {
   /**
-   * Отключить проверку SSL-сертификата (панель обычно с самоподписанным).
-   * ⚠️ Только для доверенной сети / локальных тестов. В production лучше
-   * добавить CA панели, а не отключать проверку.
+   * Базовый адрес панели без слэша в конце, напр. https://192.168.0.10:8888.
+   * Для apiKey — БЕЗ защитного входа и без apsess (корень).
    */
+  baseUrl: string;
+  auth: AaPanelAuth;
+  /** Отключить проверку самоподписанного SSL (только доверенная сеть/тесты). */
   insecureTLS?: boolean;
   /** Таймаут запроса в мс (по умолчанию 15000). */
   timeoutMs?: number;
 }
 
-export type BatchOperationType = "start" | "stop" | "reload";
+export type BatchOperationType = "start" | "stop" | "restart";
 
 export interface ProjectListParams {
-  /** Номер страницы, с 1. По умолчанию 1. */
   p?: number;
-  /** Количество на странице. По умолчанию 10. */
   limit?: number;
-  /** Поиск по имени проекта. */
   search?: string;
-  /** Порядок сортировки. */
   re_order?: string;
 }
 
-export interface ModifyProjectParams {
-  project_cwd: string;
-  project_name: string;
-  /** Команда из package.json: "start", "dev" и т.д. (см. getRunList). */
-  project_script: string;
-  port: string;
-  /** Пользователь ОС, напр. "www" или "root". */
-  run_user: string;
-  /** Версия Node.js, напр. "v24.13.0" (см. getNodeVersions). */
-  nodejs_version: string;
-  /** Примечание к проекту. */
-  project_ps: string;
-  /** Автозапуск с системой: 1 — да, 0 — нет. */
-  is_power_on: 0 | 1;
-}
-
 /**
- * Точная форма ответа зависит от версии aaPanel. Уточни типы под свою
- * панель, понаблюдав ответы в DevTools, и замени `unknown` на конкретику.
+ * Точная форма ответа зависит от версии aaPanel. Уточняй типы под свою
+ * панель, понаблюдав ответы (DevTools), и заменяй `unknown` на конкретику.
  */
 export type AaPanelResponse = unknown;
 
@@ -77,27 +81,26 @@ export class AaPanelError extends Error {
 
 // ──────────────────────────── Клиент ────────────────────────────
 
-export class AaPanelNodeClient {
+export class AaPanelClient {
   private readonly baseUrl: string;
-  private readonly sessionToken: string;
+  private readonly auth: AaPanelAuth;
   private readonly insecureTLS: boolean;
   private readonly timeoutMs: number;
 
   constructor(config: AaPanelClientConfig) {
-    if (!config.baseUrl) throw new Error("AaPanelNodeClient: baseUrl is required");
-    if (!config.sessionToken) throw new Error("AaPanelNodeClient: sessionToken is required");
-
+    if (!config.baseUrl) throw new Error("AaPanelClient: baseUrl is required");
+    if (!config.auth) throw new Error("AaPanelClient: auth is required");
     this.baseUrl = config.baseUrl.replace(/\/+$/, "");
-    this.sessionToken = config.sessionToken;
+    this.auth = config.auth;
     this.insecureTLS = config.insecureTLS ?? false;
     this.timeoutMs = config.timeoutMs ?? 15_000;
   }
 
-  // ── Методы API ──
+  // ── Node.js-проекты ──
 
-  /** 1. Список проектов. */
+  /** Список проектов + статусы + CPU/RAM (главный метод для дашборда). */
   listProjects(params: ProjectListParams = {}): Promise<AaPanelResponse> {
-    return this.request("get_project_list", {
+    return this.requestNode("get_project_list", {
       p: params.p ?? 1,
       limit: params.limit ?? 10,
       search: params.search ?? "",
@@ -105,71 +108,102 @@ export class AaPanelNodeClient {
     });
   }
 
-  /** 2. Информация о проекте. */
+  /** Информация об одном проекте. */
   getProjectInfo(projectName: string): Promise<AaPanelResponse> {
-    return this.request("get_project_info", { project_name: projectName });
+    return this.requestNode("get_project_info", { project_name: projectName });
   }
 
-  /** 3. Команды запуска из package.json (start, dev, ...). */
+  /** Команды запуска из package.json. */
   getRunList(projectCwd: string): Promise<AaPanelResponse> {
-    return this.request("get_run_list", { project_cwd: projectCwd });
+    return this.requestNode("get_run_list", { project_cwd: projectCwd });
   }
 
-  /** 4. Доступные версии Node.js. */
+  /** Доступные версии Node.js. */
   getNodeVersions(): Promise<AaPanelResponse> {
-    return this.request("get_nodejs_version", {});
+    return this.requestNode("get_nodejs_version", null);
   }
 
-  /** 5. Старт / стоп / рестарт одного или нескольких проектов. */
+  /** Старт / стоп / рестарт одного или нескольких проектов по имени. */
   batchOperation(
     projectNames: string | string[],
     type: BatchOperationType,
   ): Promise<AaPanelResponse> {
-    const ids = Array.isArray(projectNames) ? projectNames.join(",") : projectNames;
-    return this.request("batch_operation_project", { ids, type });
+    const names = Array.isArray(projectNames) ? projectNames : [projectNames];
+    // ВНИМАНИЕ: формат особый — поля напрямую, имена — JSON-массивом.
+    return this.request("v2/project/nodejs/batch_operation_project", {
+      project_names: JSON.stringify(names),
+      operation_type: type,
+    });
   }
 
-  /** 5a. Запустить проект. */
-  startProject(projectName: string): Promise<AaPanelResponse> {
-    return this.batchOperation(projectName, "start");
+  startProject(name: string): Promise<AaPanelResponse> {
+    return this.batchOperation(name, "start");
+  }
+  stopProject(name: string): Promise<AaPanelResponse> {
+    return this.batchOperation(name, "stop");
+  }
+  restartProject(name: string): Promise<AaPanelResponse> {
+    return this.batchOperation(name, "restart");
   }
 
-  /** 5b. Остановить проект. */
-  stopProject(projectName: string): Promise<AaPanelResponse> {
-    return this.batchOperation(projectName, "stop");
+  // ── Мониторинг сервера ──
+
+  /** CPU/RAM/ядра/ОС/версия/аптайм сервера. */
+  getSystemTotal(): Promise<AaPanelResponse> {
+    return this.request("system?action=GetSystemTotal", {});
   }
 
-  /** 5c. Перезапустить проект. */
-  restartProject(projectName: string): Promise<AaPanelResponse> {
-    return this.batchOperation(projectName, "reload");
-  }
-
-  /** 6. Изменить настройки проекта. */
-  modifyProject(params: ModifyProjectParams): Promise<AaPanelResponse> {
-    return this.request("modify_project", params);
+  /** Использование дисков. */
+  getDiskInfo(): Promise<AaPanelResponse> {
+    return this.request("system?action=GetDiskInfo", {});
   }
 
   // ── Внутреннее ──
 
-  /** Выполняет POST к эндпоинту nodejs с телом data=<urlencoded JSON>. */
-  private async request(
-    endpoint: string,
-    data: Record<string, unknown>,
+  /** Обёртка над Node.js-методами: параметры идут в поле data=<json>. */
+  private requestNode(
+    method: string,
+    data: Record<string, unknown> | null,
   ): Promise<AaPanelResponse> {
-    const url = `${this.baseUrl}/${this.sessionToken}/v2/project/nodejs/${endpoint}`;
-    const body = new URLSearchParams({ data: JSON.stringify(data) });
+    return this.request(`v2/project/nodejs/${method}`, {
+      data: data === null ? "" : JSON.stringify(data),
+    });
+  }
+
+  /**
+   * Базовый POST. `endpointPath` — путь после baseUrl (может включать ?action).
+   * `fields` — поля тела (form-urlencoded). Авторизация добавляется здесь.
+   */
+  private async request(
+    endpointPath: string,
+    fields: Record<string, string>,
+  ): Promise<AaPanelResponse> {
+    const params = new URLSearchParams(fields);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/x-www-form-urlencoded",
+    };
+
+    let url: string;
+    if (this.auth.mode === "apiKey") {
+      const requestTime = Math.floor(Date.now() / 1000);
+      params.set("request_time", String(requestTime));
+      params.set("request_token", signToken(requestTime, this.auth.apiSk));
+      url = `${this.baseUrl}/${endpointPath}`;
+    } else {
+      headers["x-http-token"] = this.auth.httpToken;
+      headers["Cookie"] = this.auth.cookie;
+      url = `${this.baseUrl}/${this.auth.sessionToken}/${endpointPath}`;
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-
     try {
       const init: RequestInit = {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body,
+        headers,
+        body: params,
         signal: controller.signal,
       };
-
       if (this.insecureTLS) {
         // fetch в Node (undici) принимает dispatcher; в типах RequestInit его нет.
         (init as Record<string, unknown>).dispatcher = await getInsecureDispatcher();
@@ -177,20 +211,17 @@ export class AaPanelNodeClient {
 
       const response = await fetch(url, init);
       const text = await response.text();
-
       if (!response.ok) {
         throw new AaPanelError(
-          `aaPanel ${endpoint} failed: HTTP ${response.status}`,
+          `aaPanel ${endpointPath} failed: HTTP ${response.status}`,
           response.status,
           text,
         );
       }
-
-      // Панель обычно отвечает JSON; на всякий случай отдаём текст как fallback.
       try {
         return JSON.parse(text) as AaPanelResponse;
       } catch {
-        return text;
+        return text; // на случай не-JSON ответа
       }
     } finally {
       clearTimeout(timer);
@@ -198,11 +229,16 @@ export class AaPanelNodeClient {
   }
 }
 
-// ─────────────── Вспомогательное: dispatcher без проверки TLS ───────────────
+// ─────────────────────────── Вспомогательное ───────────────────────────
+
+/** request_token = md5( request_time + md5(api_sk) ). */
+function signToken(requestTime: number, apiSk: string): string {
+  const skMd5 = createHash("md5").update(apiSk).digest("hex");
+  return createHash("md5").update(`${requestTime}${skMd5}`).digest("hex");
+}
 
 let cachedDispatcher: unknown;
-
-/** Лениво создаёт undici Agent с отключённой проверкой сертификата. */
+/** Лениво создаёт undici Agent с отключённой проверкой TLS. */
 async function getInsecureDispatcher(): Promise<unknown> {
   if (!cachedDispatcher) {
     const { Agent } = await import("undici");
@@ -212,16 +248,18 @@ async function getInsecureDispatcher(): Promise<unknown> {
 }
 
 /*
- * Пример использования (server-side):
+ * Пример (server-side):
  *
- *   import { AaPanelNodeClient } from "./aapanel-client";
+ *   import { AaPanelClient } from "./aapanel-client";
  *
- *   const client = new AaPanelNodeClient({
- *     baseUrl: process.env.AAPANEL_BASE_URL!,         // https://<server>:<port>
- *     sessionToken: process.env.AAPANEL_SESSION_TOKEN!, // apsess_...
- *     insecureTLS: true,                               // самоподписанный сертификат
+ *   // Рекомендуется — постоянный ключ:
+ *   const client = new AaPanelClient({
+ *     baseUrl: process.env.AAPANEL_BASE_URL!,   // https://<server>:<port>  (корень!)
+ *     auth: { mode: "apiKey", apiSk: process.env.AAPANEL_API_SK! },
+ *     insecureTLS: true,                         // самоподписанный сертификат
  *   });
  *
  *   const projects = await client.listProjects({ limit: 20 });
- *   await client.startProject("crmtest2");
+ *   const sys = await client.getSystemTotal();
+ *   await client.startProject("myapp");
  */

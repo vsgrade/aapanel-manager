@@ -14,31 +14,38 @@ api aapanel/
 ├── README.md                     # главная (EN)
 ├── README.ru.md                  # главная (RU)
 ├── LICENSE                       # MIT
-├── .gitignore                    # игнор: .env, node_modules, сборка
-├── .env.example                  # шаблон секретов (без реальных значений)
+├── .gitignore                    # игнор: .env, .mcp.json, node_modules, .playwright-mcp
+├── .env.example                  # шаблон секретов (api_sk + сессия)
 ├── docs/
 │   ├── project-index.md          # этот файл
 │   ├── NAVIGATION.md             # быстрая навигация
-│   ├── ru/{overview,authentication,nodejs-projects}.md
-│   └── en/{overview,authentication,nodejs-projects}.md
+│   ├── ru/{overview,authentication,nodejs-projects,system-monitoring}.md
+│   └── en/{overview,authentication,nodejs-projects,system-monitoring}.md
 └── examples/
     └── javascript/
-        └── aapanel-client.ts     # TypeScript-обёртка над API (server-side)
+        └── aapanel-client.ts     # обёртка над API (api_sk + сессия, server-side)
 ```
 
 ## Файлы
 
 | Путь | Назначение | Зависит от / ссылается на | Что сломается при изменении |
 |------|-----------|---------------------------|------------------------------|
-| `README.md` / `README.ru.md` | Точка входа, обзор, быстрый старт | ссылки на `docs/{en,ru}/*`, `examples/...` | битые ссылки при переименовании доков |
-| `docs/{ru,en}/overview.md` | Контекст API, две схемы авторизации | ссылки друг на друга и на authentication | — |
-| `docs/{ru,en}/authentication.md` | Токен, формат запросов, SSL, безопасность | `.env.example` | рассинхрон с реальным форматом запросов |
-| `docs/{ru,en}/nodejs-projects.md` | 6 методов API (ядро доки) | authentication.md | должен совпадать с `aapanel-client.ts` |
-| `examples/javascript/aapanel-client.ts` | Обёртка: классы/методы под 6 эндпоинтов | Node 18+ (fetch), опц. `undici` | при смене сигнатур API — обновить и доку |
+| `README.md` / `README.ru.md` | Точка входа, обзор, пример, планы | ссылки на `docs/{en,ru}/*`, `examples/...` | битые ссылки при переименовании доков |
+| `docs/{ru,en}/overview.md` | Контекст API, две схемы авторизации, рецепт | authentication, nodejs-projects, system-monitoring | — |
+| `docs/{ru,en}/authentication.md` | `api_sk` + сессия, подпись, рецепт, SSL, безопасность | `.env.example`, `aapanel-client.ts` | рассинхрон с реальной авторизацией |
+| `docs/{ru,en}/nodejs-projects.md` | 5 методов Node.js + реальные ответы | authentication.md | должен совпадать с `aapanel-client.ts` |
+| `docs/{ru,en}/system-monitoring.md` | `GetSystemTotal`, `GetDiskInfo` + реальные ответы | authentication.md | — |
+| `examples/javascript/aapanel-client.ts` | Класс `AaPanelClient`: 2 режима авторизации, Node.js + система | Node 18+ (fetch, node:crypto), опц. `undici` | при смене сигнатур API — обновить и доку |
 | `.env.example` | Шаблон переменных окружения | — | рассинхрон с тем, что читает обёртка |
 
 ## Точки соответствия (держать синхронными)
 
-- **`docs/*/nodejs-projects.md` ↔ `examples/javascript/aapanel-client.ts`** — методы и параметры должны совпадать.
-- **RU ↔ EN** — три пары доков должны быть содержательно эквивалентны.
-- **`.env.example` ↔ `aapanel-client.ts`** — имена переменных (`AAPANEL_BASE_URL`, `AAPANEL_SESSION_TOKEN`).
+- **`docs/*/nodejs-projects.md` + `system-monitoring.md` ↔ `aapanel-client.ts`** — методы и параметры должны совпадать.
+- **RU ↔ EN** — четыре пары доков должны быть содержательно эквивалентны.
+- **`.env.example` ↔ `aapanel-client.ts`** — имена переменных (`AAPANEL_BASE_URL`, `AAPANEL_API_SK`, сессионные).
+
+## Ключевые факты (проверено на живой панели v8)
+
+- Авторизация: **`api_sk`** (постоянный, на корне, `request_token=md5(request_time+md5(api_sk))`) **или** сессия (`apsess` + `x-http-token` + cookie, временная).
+- `api_sk` покрывает **и** `/system?action=…`, **и** `/v2/project/nodejs/…`.
+- `batch_operation_project`: поля `project_names` (JSON-массив) + `operation_type`, **без** обёртки `data=`.

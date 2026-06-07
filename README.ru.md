@@ -1,6 +1,6 @@
-# Документация API aaPanel — управление Node.js-проектами
+# Документация API aaPanel — Node.js-проекты и мониторинг сервера
 
-> Неофициальная community-документация по управлению **Node.js-проектами** через API aaPanel — раздел, который в официальной доке почти не описан.
+> Неофициальная community-документация по API aaPanel — **управление Node.js-проектами** и **мониторинг сервера** — проверено на живой панели (v8).
 
 🌍 **Язык:** **Русский** · [English](README.md)
 
@@ -10,53 +10,54 @@
 
 ## Что это?
 
-[aaPanel](https://www.aapanel.com/) (международная версия панели BT/宝塔) — это веб-панель управления Linux-сервером. Её можно автоматизировать через HTTP API, но официальная документация неполная — в частности, управление Node.js-проектами не описано. Этот репозиторий закрывает пробел.
+[aaPanel](https://www.aapanel.com/) (международная версия панели BT/宝塔) — это веб-панель управления Linux-сервером. Её можно автоматизировать через HTTP API, но официальная документация неполная — в частности, управление Node.js-проектами не описано. Этот репозиторий закрывает пробел **реальными, проверенными** примерами запросов и ответов.
 
-Методы здесь получены так, как сам aaPanel рекомендует для недокументированных функций: наблюдением за запросами панели в DevTools браузера.
+**Главная находка:** один постоянный ключ `api_sk`, используемый на корне панели, покрывает **и** официальные эндпоинты (`/system?action=…`), **и** внутренние (`/v2/project/nodejs/…`) — то есть приложение может управлять всем одним стабильным ключом.
 
 ## Документация
 
 | Документ | Содержание |
 |----------|-----------|
-| 📖 [Обзор](docs/ru/overview.md) | Что такое API aaPanel; две схемы авторизации (официальный `api_sk` vs внутренний сессионный токен) |
-| 🔑 [Аутентификация](docs/ru/authentication.md) | Сессионный токен, формат запросов, нюанс SSL, безопасность |
-| 🟢 [Node.js-проекты](docs/ru/nodejs-projects.md) | 6 методов: список, инфо, команды запуска, версии, старт/стоп/рестарт, настройки |
+| 📖 [Обзор](docs/ru/overview.md) | Что такое API aaPanel; две схемы авторизации; рецепт «разведка→исполнение» |
+| 🔑 [Аутентификация](docs/ru/authentication.md) | Ключ `api_sk` (рекомендуется) vs сессия; подпись запроса; SSL; безопасность |
+| 🟢 [Node.js-проекты](docs/ru/nodejs-projects.md) | список, инфо, команды, версии, старт/стоп — с реальными ответами |
+| 📊 [Мониторинг сервера](docs/ru/system-monitoring.md) | CPU / RAM / диск (`GetSystemTotal`, `GetDiskInfo`) |
 
 ## Пример кода
 
-Готовая обёртка на TypeScript: [`examples/javascript/aapanel-client.ts`](examples/javascript/aapanel-client.ts).
+Готовая обёртка на TypeScript (авторизация ключом **или** сессией): [`examples/javascript/aapanel-client.ts`](examples/javascript/aapanel-client.ts).
 
 ```ts
-import { AaPanelNodeClient } from "./examples/javascript/aapanel-client";
+import { AaPanelClient } from "./examples/javascript/aapanel-client";
 
-const client = new AaPanelNodeClient({
-  baseUrl: process.env.AAPANEL_BASE_URL!,        // https://<сервер>:<порт>
-  sessionToken: process.env.AAPANEL_SESSION_TOKEN!, // apsess_...
+const client = new AaPanelClient({
+  baseUrl: process.env.AAPANEL_BASE_URL!,                  // https://<сервер>:<порт> (корень!)
+  auth: { mode: "apiKey", apiSk: process.env.AAPANEL_API_SK! },
+  insecureTLS: true,                                       // самоподписанный сертификат
 });
 
-await client.listProjects();
-await client.startProject("crmtest2");
+await client.listProjects();        // имена, статус (запущен/остановлен), CPU/RAM
+await client.getSystemTotal();      // CPU / RAM / ядра сервера
+await client.startProject("myapp");
 ```
 
-> ⚠️ **Только на стороне сервера.** Сессионный токен и `api_sk` — секреты, их нельзя показывать в коде браузера. См. [Аутентификация → Безопасность](docs/ru/authentication.md#безопасность).
+> ⚠️ **Только на стороне сервера.** `api_sk` даёт полный доступ к серверу — никогда не показывай его в коде браузера. См. [Аутентификация → Безопасность](docs/ru/authentication.md#безопасность).
 
-## Быстрый старт (curl)
+## Рецепт (официальный способ aaPanel)
 
-```bash
-curl -k -X POST "https://<СЕРВЕР>:<ПОРТ>/<SESSION_TOKEN>/v2/project/nodejs/get_project_list" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'data={"p":1,"limit":10,"search":"","re_order":""}'
-```
+Функция не описана? Открой панель → DevTools (Network) → нажми её → посмотри запрос → повтори **тот же путь и тело** с авторизацией `api_sk`. См. [Аутентификация](docs/ru/authentication.md#-рецепт-разведка--исполнение-официальный-способ-aapanel).
 
 ## Планы
 
-- [x] Управление Node.js-проектами
-- [ ] Сайты, базы данных, FTP, SSL, бэкапы (официальный API `api_sk`)
-- [ ] Next.js-приложение для управления панелью поверх этого API (бэкенд-прокси)
+- [x] Управление Node.js-проектами (список, инфо, команды, версии, старт/стоп)
+- [x] Мониторинг сервера (CPU/RAM/диск)
+- [x] Проверено: `api_sk` покрывает и внутренние эндпоинты
+- [ ] Другие модули (сайты, БД, FTP, SSL, бэкапы)
+- [ ] Next.js-приложение для управления панелью поверх этого API (бэкенд-прокси, `api_sk`)
 
 ## Дисклеймер
 
-Документация неофициальная. Поведение может меняться при обновлении aaPanel — сверяйтесь со своей панелью. Официальная дока: [aapanel.com/docs](https://www.aapanel.com/docs/).
+Документация неофициальная. Проверено на aaPanel v8; поведение может меняться между версиями — сверяйтесь со своей панелью. Официальная дока: [aapanel.com/docs](https://www.aapanel.com/docs/).
 
 ## Лицензия
 

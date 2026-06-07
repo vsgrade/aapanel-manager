@@ -5,6 +5,8 @@
 *.key
 *.pem
 secrets.json
+# .mcp.json содержит API-ключи MCP-серверов (context7, @21st-dev/magic)
+.mcp.json
 
 # Зависимости
 node_modules/
@@ -19,6 +21,9 @@ build/
 out/
 *.log
 *.tmp
+
+# Артефакты MCP-браузера (скриншоты, снапшоты)
+.playwright-mcp/
 
 # IDE / ОС
 .vscode/
