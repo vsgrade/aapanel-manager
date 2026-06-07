@@ -51,7 +51,7 @@ Undocumented feature? Open the panel → DevTools (Network) → click it → ins
 
 ## Roadmap
 
-- [x] Node.js project management (list, info, scripts, versions, start/stop)
+- [x] Node.js project management (list, info, scripts, versions, start/stop/restart, modify, delete)
 - [x] Websites (PHP/WP): list, create, delete
 - [x] Databases (MySQL + PostgreSQL CRUD)
 - [x] Server monitoring (CPU/RAM/disk)

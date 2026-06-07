@@ -25,7 +25,10 @@ POST https://<СЕРВЕР>:<ПОРТ>/v2/project/nodejs/<метод>
 | 2 | [`get_project_info`](#2-get_project_info) | Информация об одном проекте |
 | 3 | [`get_run_list`](#3-get_run_list) | Команды запуска из `package.json` |
 | 4 | [`get_nodejs_version`](#4-get_nodejs_version) | Доступные версии Node.js |
-| 5 | [`batch_operation_project`](#5-batch_operation_project) | Старт / стоп / рестарт |
+| 5 | [`batch_operation_project`](#5-batch_operation_project) | Старт / стоп / рестарт / **удаление** |
+| 6 | [`modify_project`](#6-modify_project) | Изменить настройки проекта |
+| 7 | [`pre_env`](#7-pre_env) | Метаданные для формы создания (версии Node, менеджеры пакетов, пользователи) |
+| — | [Создание проекта](#создание-проекта) | Форма «Добавить элемент» (два режима) |
 
 ---
 
@@ -190,9 +193,25 @@ project_names=["myapp"]&operation_type=start
 | Параметр | Тип | Описание |
 |----------|-----|----------|
 | `project_names` | JSON-массив строк | имена проектов, напр. `["myapp"]` или `["a","b"]` |
-| `operation_type` | string | `start`, `stop`, `restart` |
+| `operation_type` | string | `start`, `stop`, `restart`, **`delete`** |
 
-> ⚠️ Вживую подтверждён `start`. `stop` / `restart` используют тот же формат, но точное слово стоит сверить рецептом «разведка → исполнение».
+> ⚠️ Вживую подтверждены `start` и `delete`. `stop` / `restart` используют тот же формат (то же поле `operation_type`).
+> **Важно:** удаление Node-проекта идёт через **этот же** метод (`operation_type=delete`), отдельного эндпоинта нет. Удаляется только регистрация проекта в панели — **каталог проекта на диске остаётся** (диалог удаления не предлагает удалить каталог, в отличие от сайтов).
+
+**Удаление — тело запроса:**
+```
+project_names=["myapp"]&operation_type=delete
+```
+**Реальный ответ (удаление):**
+```json
+{
+  "status": 0,
+  "message": {
+    "msg": "Successfully 1 items.Failed on 0 projects.",
+    "msg_list": [ { "name": "myapp", "status": true, "msg": "Operation successful." } ]
+  }
+}
+```
 
 **Пример (curl, авторизация ключом):**
 ```bash
@@ -215,9 +234,81 @@ curl -k -X POST "https://<СЕРВЕР>:<ПОРТ>/v2/project/nodejs/batch_opera
 
 ---
 
+## 6. `modify_project`
+
+Изменить настройки существующего проекта (имя, порт, скрипт запуска, версию Node, описание, автозапуск). Открытие формы «Изменить» в панели сначала загружает данные через [`get_project_info`](#2-get_project_info) + [`get_run_list`](#3-get_run_list) + [`get_nodejs_version`](#4-get_nodejs_version), а сохранение шлёт `modify_project`.
+
+**Параметры (`data`):**
+```json
+{
+  "project_cwd": "/www/node-projects/myapp/",
+  "project_name": "myapp",
+  "project_script": "prod:start",
+  "port": "3003",
+  "run_user": "www",
+  "nodejs_version": "v24.13.0",
+  "project_ps": "myapp 3003",
+  "is_power_on": 0
+}
+```
+| Параметр | Тип | Описание |
+|----------|-----|----------|
+| `project_cwd` | string | Каталог проекта (идентифицирует проект) |
+| `project_name` | string | Имя проекта |
+| `project_script` | string | Ключ скрипта из `package.json` (см. [`get_run_list`](#3-get_run_list)) |
+| `port` | string | Порт |
+| `run_user` | string | Пользователь запуска (`www`) |
+| `nodejs_version` | string | Версия Node (см. [`get_nodejs_version`](#4-get_nodejs_version)) |
+| `project_ps` | string | Описание / заметка |
+| `is_power_on` | int | Автозапуск при загрузке сервера: `1` — да, `0` — нет |
+
+**Реальный ответ:**
+```json
+{ "status": 0, "message": { "status_code": 1, "error_msg": "", "data": "Modify the project successfully" } }
+```
+
+---
+
+## 7. `pre_env`
+
+Метаданные для формы создания проекта. Эндпоинт **отличается** от остальных: `POST /v2/mod/nodejs/com/pre_env` (без `data`, тело пустое).
+
+**Реальный ответ (обезличено):**
+```json
+{
+  "status": 0,
+  "message": {
+    "nodejs_versions": ["v24.13.0"],
+    "package_managers": ["pnpm", "yarn", "npm"],
+    "user_list": ["www", "root", "nobody", "..."],
+    "maximum_memory": 3819
+  }
+}
+```
+| Поле | Что значит |
+|------|-----------|
+| `nodejs_versions` | установленные версии Node |
+| `package_managers` | доступные менеджеры пакетов |
+| `user_list` | системные пользователи (для поля «Пользователь запуска») |
+| `maximum_memory` | всего RAM сервера, МБ (потолок лимита памяти PM2) |
+
+---
+
+## Создание проекта
+
+В панели создание — кнопка **«Добавить элемент»**. Форма имеет **два режима**:
+
+**1. «Проект по умолчанию»** — путь указывает на готовый каталог с `package.json`; команда запуска выбирается из секции `scripts` (или режим «Пользовательская команда»). Поля: путь, имя, параметры запуска (скрипт), порт, пользователь, версия Node, примечание, домены.
+
+**2. «Проект PM2»** — запуск через PM2. Поля: имя, версия Node, **файл запуска**, **каталог запуска**, число экземпляров (кластеры), лимит памяти (МБ), автозапуск, менеджер пакетов (`pnpm`/`yarn`/`npm`), флаг «не устанавливать node_modules».
+
+> ⚠️ **Точный запрос создания (`create_project`) ещё не снят вживую.** Поля выбора пути/файла в форме завязаны на файловый пикер панели, который не удалось воспроизвести автоматизацией. Набор полей создания совпадает с [`modify_project`](#6-modify_project) (плюс PM2-поля выше). Снимите точный запрос рецептом «разведка → исполнение» ([authentication.md](authentication.md)): откройте форму, заполните, нажмите «Подтвердить» и посмотрите запрос в DevTools → Network.
+
+---
+
 ## Примечания
 
 - **`project_script`** в настройках проекта — ключ из секции `scripts` в `package.json` (см. [`get_run_list`](#3-get_run_list)).
 - **`nodejs_version`** — одно из значений [`get_nodejs_version`](#4-get_nodejs_version).
 - Имена проектов чувствительны к регистру.
-- Метод изменения настроек проекта (`modify_project`) не верифицирован на живой панели — снимите точный формат через рецепт «разведка → исполнение» ([authentication.md](authentication.md)).
+- **Удаление** проекта — через [`batch_operation_project`](#5-batch_operation_project) с `operation_type=delete` (отдельного эндпоинта нет; каталог на диске сохраняется).

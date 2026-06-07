@@ -25,7 +25,10 @@ The `status` field: **`0`** = success, **`-1`** (or `false`) = error. The payloa
 | 2 | [`get_project_info`](#2-get_project_info) | Info about one project |
 | 3 | [`get_run_list`](#3-get_run_list) | Run scripts from `package.json` |
 | 4 | [`get_nodejs_version`](#4-get_nodejs_version) | Available Node.js versions |
-| 5 | [`batch_operation_project`](#5-batch_operation_project) | Start / stop / restart |
+| 5 | [`batch_operation_project`](#5-batch_operation_project) | Start / stop / restart / **delete** |
+| 6 | [`modify_project`](#6-modify_project) | Modify project settings |
+| 7 | [`pre_env`](#7-pre_env) | Metadata for the create form (Node versions, package managers, users) |
+| — | [Creating a project](#creating-a-project) | The "Add project" form (two modes) |
 
 ---
 
@@ -190,9 +193,25 @@ project_names=["myapp"]&operation_type=start
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `project_names` | JSON array of strings | project names, e.g. `["myapp"]` or `["a","b"]` |
-| `operation_type` | string | `start`, `stop`, `restart` |
+| `operation_type` | string | `start`, `stop`, `restart`, **`delete`** |
 
-> ⚠️ `start` is verified live. `stop` / `restart` use the same format, but confirm the exact keyword via the "discover → execute" recipe.
+> ⚠️ `start` and `delete` are verified live. `stop` / `restart` use the same format (same `operation_type` field).
+> **Important:** deleting a Node project goes through **this same** method (`operation_type=delete`) — there is no separate endpoint. Only the project's registration in the panel is removed — **the project directory on disk stays** (the delete dialog offers no "delete directory" option, unlike websites).
+
+**Delete — request body:**
+```
+project_names=["myapp"]&operation_type=delete
+```
+**Real response (delete):**
+```json
+{
+  "status": 0,
+  "message": {
+    "msg": "Successfully 1 items.Failed on 0 projects.",
+    "msg_list": [ { "name": "myapp", "status": true, "msg": "Operation successful." } ]
+  }
+}
+```
 
 **Example (curl, key auth):**
 ```bash
@@ -215,9 +234,81 @@ curl -k -X POST "https://<SERVER>:<PORT>/v2/project/nodejs/batch_operation_proje
 
 ---
 
+## 6. `modify_project`
+
+Modify an existing project's settings (name, port, run script, Node version, description, autostart). Opening the "Edit" form in the panel first loads data via [`get_project_info`](#2-get_project_info) + [`get_run_list`](#3-get_run_list) + [`get_nodejs_version`](#4-get_nodejs_version); saving sends `modify_project`.
+
+**Parameters (`data`):**
+```json
+{
+  "project_cwd": "/www/node-projects/myapp/",
+  "project_name": "myapp",
+  "project_script": "prod:start",
+  "port": "3003",
+  "run_user": "www",
+  "nodejs_version": "v24.13.0",
+  "project_ps": "myapp 3003",
+  "is_power_on": 0
+}
+```
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `project_cwd` | string | Project directory (identifies the project) |
+| `project_name` | string | Project name |
+| `project_script` | string | Script key from `package.json` (see [`get_run_list`](#3-get_run_list)) |
+| `port` | string | Port |
+| `run_user` | string | Run user (`www`) |
+| `nodejs_version` | string | Node version (see [`get_nodejs_version`](#4-get_nodejs_version)) |
+| `project_ps` | string | Description / note |
+| `is_power_on` | int | Autostart on server boot: `1` = yes, `0` = no |
+
+**Real response:**
+```json
+{ "status": 0, "message": { "status_code": 1, "error_msg": "", "data": "Modify the project successfully" } }
+```
+
+---
+
+## 7. `pre_env`
+
+Metadata for the create-project form. The endpoint is **different** from the others: `POST /v2/mod/nodejs/com/pre_env` (no `data`, empty body).
+
+**Real response (anonymized):**
+```json
+{
+  "status": 0,
+  "message": {
+    "nodejs_versions": ["v24.13.0"],
+    "package_managers": ["pnpm", "yarn", "npm"],
+    "user_list": ["www", "root", "nobody", "..."],
+    "maximum_memory": 3819
+  }
+}
+```
+| Field | Meaning |
+|-------|---------|
+| `nodejs_versions` | installed Node versions |
+| `package_managers` | available package managers |
+| `user_list` | system users (for the "Run user" field) |
+| `maximum_memory` | total server RAM, MB (cap for the PM2 memory limit) |
+
+---
+
+## Creating a project
+
+In the panel, creation is the **"Add project"** button. The form has **two modes**:
+
+**1. "Default project"** — the path points to a ready directory with a `package.json`; the run command is chosen from its `scripts` section (or "Custom command" mode). Fields: path, name, run options (script), port, user, Node version, note, domains.
+
+**2. "PM2 project"** — runs under PM2. Fields: name, Node version, **startup file**, **startup directory**, instances (clusters), memory limit (MB), autostart, package manager (`pnpm`/`yarn`/`npm`), a "don't install node_modules" flag.
+
+> ⚠️ **The exact create request (`create_project`) is not yet captured live.** The path/file selectors in the form are tied to the panel's file picker, which could not be reproduced through automation. The create field set matches [`modify_project`](#6-modify_project) (plus the PM2 fields above). Capture the exact request via the "discover → execute" recipe ([authentication.md](authentication.md)): open the form, fill it, click "Confirm", and inspect the request in DevTools → Network.
+
+---
+
 ## Notes
 
 - **`project_script`** in a project's settings is a key from the `scripts` section of `package.json` (see [`get_run_list`](#3-get_run_list)).
 - **`nodejs_version`** is one of the values from [`get_nodejs_version`](#4-get_nodejs_version).
 - Project names are case-sensitive.
-- The project-settings method (`modify_project`) was not verified against a live panel — capture its exact format via the "discover → execute" recipe ([authentication.md](authentication.md)).
+- **Deleting** a project uses [`batch_operation_project`](#5-batch_operation_project) with `operation_type=delete` (no separate endpoint; the on-disk directory is preserved).
