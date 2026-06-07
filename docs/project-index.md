@@ -19,8 +19,8 @@ api aapanel/
 ├── docs/
 │   ├── project-index.md          # этот файл
 │   ├── NAVIGATION.md             # быстрая навигация
-│   ├── ru/{overview,authentication,nodejs-projects,system-monitoring}.md
-│   └── en/{overview,authentication,nodejs-projects,system-monitoring}.md
+│   ├── ru/{overview,authentication,nodejs-projects,databases,system-monitoring}.md
+│   └── en/{overview,authentication,nodejs-projects,databases,system-monitoring}.md
 └── examples/
     └── javascript/
         └── aapanel-client.ts     # обёртка над API (api_sk + сессия, server-side)
@@ -34,6 +34,7 @@ api aapanel/
 | `docs/{ru,en}/overview.md` | Контекст API, две схемы авторизации, рецепт | authentication, nodejs-projects, system-monitoring | — |
 | `docs/{ru,en}/authentication.md` | `api_sk` + сессия, подпись, рецепт, SSL, безопасность | `.env.example`, `aapanel-client.ts` | рассинхрон с реальной авторизацией |
 | `docs/{ru,en}/nodejs-projects.md` | 5 методов Node.js + реальные ответы | authentication.md | должен совпадать с `aapanel-client.ts` |
+| `docs/{ru,en}/databases.md` | MySQL + PostgreSQL CRUD; каждый движок — свой API | authentication.md | сверять с реальными запросами панели |
 | `docs/{ru,en}/system-monitoring.md` | `GetSystemTotal`, `GetDiskInfo` + реальные ответы | authentication.md | — |
 | `examples/javascript/aapanel-client.ts` | Класс `AaPanelClient`: 2 режима авторизации, Node.js + система | Node 18+ (fetch, node:crypto), опц. `undici` | при смене сигнатур API — обновить и доку |
 | `.env.example` | Шаблон переменных окружения | — | рассинхрон с тем, что читает обёртка |

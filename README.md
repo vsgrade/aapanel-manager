@@ -21,6 +21,7 @@
 | 📖 [Overview](docs/en/overview.md) | What the aaPanel API is; two auth schemes; the discover→execute recipe |
 | 🔑 [Authentication](docs/en/authentication.md) | `api_sk` key (recommended) vs session; request signing; SSL; security |
 | 🟢 [Node.js Projects](docs/en/nodejs-projects.md) | list, info, scripts, versions, start/stop — with real responses |
+| 🗄️ [Databases](docs/en/databases.md) | MySQL + PostgreSQL CRUD (each engine has its own API) |
 | 📊 [Server Monitoring](docs/en/system-monitoring.md) | CPU / RAM / disk (`GetSystemTotal`, `GetDiskInfo`) |
 
 ## Code example
@@ -50,9 +51,10 @@ Undocumented feature? Open the panel → DevTools (Network) → click it → ins
 ## Roadmap
 
 - [x] Node.js project management (list, info, scripts, versions, start/stop)
+- [x] Databases (MySQL + PostgreSQL CRUD)
 - [x] Server monitoring (CPU/RAM/disk)
 - [x] Verified `api_sk` covers internal endpoints too
-- [ ] More modules (sites, databases, FTP, SSL, backups)
+- [ ] More modules (sites, FTP, SSL, backups)
 - [ ] Next.js management app on top of this API (backend proxy, `api_sk`)
 
 ## Disclaimer

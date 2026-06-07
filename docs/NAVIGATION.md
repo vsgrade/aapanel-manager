@@ -9,6 +9,7 @@
 | Обзор API / две схемы авторизации / рецепт | [ru/overview](ru/overview.md) | [en/overview](en/overview.md) |
 | Аутентификация (`api_sk` + сессия), SSL, безопасность | [ru/authentication](ru/authentication.md) | [en/authentication](en/authentication.md) |
 | Node.js-проекты (список, инфо, старт/стоп…) | [ru/nodejs-projects](ru/nodejs-projects.md) | [en/nodejs-projects](en/nodejs-projects.md) |
+| Базы данных (MySQL + PostgreSQL, CRUD) | [ru/databases](ru/databases.md) | [en/databases](en/databases.md) |
 | Мониторинг сервера (CPU/RAM/диск) | [ru/system-monitoring](ru/system-monitoring.md) | [en/system-monitoring](en/system-monitoring.md) |
 
 ## Код
