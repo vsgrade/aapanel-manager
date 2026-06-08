@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  admin
+  viewer
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  role         Role       @default(viewer)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  auditLogs    AuditLog[]
+}
+
+model Server {
+  id          String        @id @default(cuid())
+  name        String
+  tag         String?
+  baseUrl     String
+  apiSkEnc    String
+  insecureTLS Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  status      ServerStatus?
+  auditLogs   AuditLog[]
+}
+
+model ServerStatus {
+  serverId      String   @id
+  server        Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  online        Boolean  @default(false)
+  cpu           Float?
+  mem           Float?
+  disk          Float?
+  projectCount  Int?
+  error         String?
+  lastCheckedAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  serverId  String?
+  server    Server?  @relation(fields: [serverId], references: [id], onDelete: SetNull)
+  action    String
+  target    String?
+  result    String
+  createdAt DateTime @default(now())
+
+  @@index([serverId])
+  @@index([userId])
+}
