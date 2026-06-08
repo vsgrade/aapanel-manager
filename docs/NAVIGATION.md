@@ -12,6 +12,8 @@
 | Сайты PHP/WP (список, создать, удалить) | [ru/sites](ru/sites.md) | [en/sites](en/sites.md) |
 | Базы данных (MySQL + PostgreSQL, CRUD) | [ru/databases](ru/databases.md) | [en/databases](en/databases.md) |
 | Файлы (менеджер: CRUD, права, архивы, загрузка, корзина) | [ru/files](ru/files.md) | [en/files](en/files.md) |
+| FTP (пользователи: CRUD, пароль, вкл/выкл) | [ru/ftp](ru/ftp.md) | [en/ftp](en/ftp.md) |
+| Планировщик / Cron (задачи: CRUD, запуск, логи) | [ru/cron](ru/cron.md) | [en/cron](en/cron.md) |
 | Мониторинг сервера (CPU/RAM/диск) | [ru/system-monitoring](ru/system-monitoring.md) | [en/system-monitoring](en/system-monitoring.md) |
 
 ## Код

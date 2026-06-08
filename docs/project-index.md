@@ -19,8 +19,8 @@ api aapanel/
 ├── docs/
 │   ├── project-index.md          # этот файл
 │   ├── NAVIGATION.md             # быстрая навигация
-│   ├── ru/{overview,authentication,nodejs-projects,sites,databases,files,system-monitoring}.md
-│   └── en/{overview,authentication,nodejs-projects,sites,databases,files,system-monitoring}.md
+│   ├── ru/{overview,authentication,nodejs-projects,sites,databases,files,ftp,cron,system-monitoring}.md
+│   └── en/{overview,authentication,nodejs-projects,sites,databases,files,ftp,cron,system-monitoring}.md
 └── examples/
     └── javascript/
         └── aapanel-client.ts     # обёртка над API (api_sk + сессия, server-side)
@@ -37,6 +37,8 @@ api aapanel/
 | `docs/{ru,en}/sites.md` | Сайты PHP/WP: list/create/delete + реальные ответы | authentication.md | сверять с реальными запросами панели |
 | `docs/{ru,en}/databases.md` | MySQL + PostgreSQL CRUD; каждый движок — свой API | authentication.md | сверять с реальными запросами панели |
 | `docs/{ru,en}/files.md` | Файловый менеджер `/v2/files`: CRUD, права, архивы, загрузка, загрузка по URL, пакетные операции, корзина | authentication.md | сверять с реальными запросами панели |
+| `docs/{ru,en}/ftp.md` | FTP `/v2/ftp` + список `/v2/data` (`table=ftps`): CRUD, пароль, вкл/выкл | authentication.md | сверять с реальными запросами панели |
+| `docs/{ru,en}/cron.md` | Планировщик `/v2/crontab`: список, создание, запуск, логи, статус, удаление | authentication.md | сверять с реальными запросами панели |
 | `docs/{ru,en}/system-monitoring.md` | `GetSystemTotal`, `GetDiskInfo` + реальные ответы | authentication.md | — |
 | `examples/javascript/aapanel-client.ts` | Класс `AaPanelClient`: 2 режима авторизации, Node.js + система | Node 18+ (fetch, node:crypto), опц. `undici` | при смене сигнатур API — обновить и доку |
 | `.env.example` | Шаблон переменных окружения | — | рассинхрон с тем, что читает обёртка |
@@ -53,3 +55,5 @@ api aapanel/
 - `api_sk` покрывает **и** `/system?action=…`, **и** `/v2/project/nodejs/…`.
 - `batch_operation_project`: поля `project_names` (JSON-массив) + `operation_type`, **без** обёртки `data=`.
 - **Файлы** (`/v2/files`): плоские поля; одиночные удаления (`DeleteFile`/`DeleteDir`) уходят в корзину (`file_recycle`); пакетные операции — `SetBatchData` (`data=<json-массив>`, `type=4`=удаление); загрузка — чанковый `upload` (multipart: `f_path/f_name/f_size/f_start/blob`); корзина — `Get_/Re_/Del_/Close_Recycle_bin`; правка файла — `SaveFileBody` с `st_mtime`+`force` (оптимистичная блокировка); удаление навсегда/очистка корзины в UI требуют ручного ввода фразы (только UI-защита).
+- **FTP** (`/v2/ftp`): список через общий `/v2/data` (`table=ftps`); CRUD по `id`+`username` (`AddUser`/`SetUserPassword`/`SetStatus` (`status` 0/1)/`DeleteUser`); `AddUser` создаёт каталог `path`, `DeleteUser` его не удаляет.
+- **Cron** (`/v2/crontab`): `GetCrontab` (тело `search/type_id/order_param`); `AddCrontab` (богатое тело: `type`/`sType`/`sBody`/расписание) → `{result:"Add_success", id}`; запуск `StartTask` (`id`), лог `GetLogs` (`id`), статус `set_cron_status` (`id`+`if_stop`), удаление `DelCrontab` (`id`).

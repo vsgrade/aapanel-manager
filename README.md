@@ -24,6 +24,8 @@
 | 🌐 [Websites (PHP/WP)](docs/en/sites.md) | list, create, delete sites |
 | 🗄️ [Databases](docs/en/databases.md) | MySQL + PostgreSQL CRUD (each engine has its own API) |
 | 📁 [Files (File Manager)](docs/en/files.md) | list/create/edit/move/copy/permissions/archive/upload/remote-download/delete + recycle bin |
+| 📂 [FTP](docs/en/ftp.md) | FTP users: list, create, change password, enable/disable, delete |
+| ⏱️ [Cron (Scheduler)](docs/en/cron.md) | tasks: list, create, run now, logs, enable/disable, delete |
 | 📊 [Server Monitoring](docs/en/system-monitoring.md) | CPU / RAM / disk (`GetSystemTotal`, `GetDiskInfo`) |
 
 ## Code example
@@ -56,9 +58,11 @@ Undocumented feature? Open the panel → DevTools (Network) → click it → ins
 - [x] Websites (PHP/WP): list, create, delete
 - [x] Databases (MySQL + PostgreSQL CRUD)
 - [x] Files / File Manager (CRUD, permissions, archive, upload, remote download, recycle bin)
+- [x] FTP users (CRUD, password, enable/disable)
+- [x] Cron / Task Scheduler (CRUD, run now, logs, enable/disable)
 - [x] Server monitoring (CPU/RAM/disk)
 - [x] Verified `api_sk` covers internal endpoints too
-- [ ] More modules (FTP, SSL, cron, backups)
+- [ ] More modules (SSL, domains, backups)
 - [ ] Next.js management app on top of this API (backend proxy, `api_sk`)
 
 ## Disclaimer
