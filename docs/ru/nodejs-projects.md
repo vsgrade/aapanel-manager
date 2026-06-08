@@ -29,6 +29,7 @@ POST https://<СЕРВЕР>:<ПОРТ>/v2/project/nodejs/<метод>
 | 6 | [`modify_project`](#6-modify_project) | Изменить настройки проекта |
 | 7 | [`pre_env`](#7-pre_env) | Метаданные для формы создания (версии Node, менеджеры пакетов, пользователи) |
 | 8 | [`create_project`](#8-create_project) | Создать новый проект |
+| 9 | [Управление доменами](#9-управление-доменами) | Список / добавить / удалить домен проекта |
 
 ---
 
@@ -341,9 +342,39 @@ curl -k -X POST "https://<СЕРВЕР>:<ПОРТ>/v2/project/nodejs/batch_opera
 
 ---
 
+## 9. Управление доменами
+
+Домены проекта (вкладка «Управление доменами» в окне «Изменить») — **отдельные** эндпоинты, не часть `modify_project`. Все три реально сняты с живой панели.
+
+**Список — `POST /v2/project/nodejs/project_get_domain`**
+Тело: `data={"project_name":"myapp"}`
+```json
+{ "status": 0, "message": [ { "id": 4, "pid": 4, "name": "myapp.example.com", "port": 80, "addtime": "2026-06-08 02:56:11" } ] }
+```
+
+**Добавить — `POST /v2/project/nodejs/project_add_domain`**
+Тело: `data={"project_name":"myapp","domains":["myapp.example.com"]}` *(поле `domains` — **массив**, можно несколько)*
+```json
+{ "status": 0, "message": { "status_code": 1, "error_msg": "[]", "data": "[1] domain names added successfully, [0] failed!" } }
+```
+
+**Удалить — `POST /v2/project/nodejs/project_remove_domain`**
+Тело: `data={"project_name":"myapp","domain":"myapp.example.com"}` *(поле `domain` — **одна строка**)*
+```json
+{ "status": 0, "message": { "status_code": 1, "error_msg": "", "data": "Domain name deleted successfully" } }
+```
+
+> ⚠️ Внимание на разницу: добавление принимает **массив** `domains`, удаление — **строку** `domain`.
+
+> 🔧 Окно «Изменить» содержит и другие вкладки со своими API, ещё **не снятые**: Маппинг, Перезапись URL, Конфигурация, **SSL**, Нагрузка, Статус сервиса, Модуль, **Лог проекта**, Лог сайта. Снять рецептом «разведка → исполнение».
+
+---
+
 ## Примечания
 
 - **`project_script`** в настройках проекта — ключ из секции `scripts` в `package.json` (см. [`get_run_list`](#3-get_run_list)).
 - **`nodejs_version`** — одно из значений [`get_nodejs_version`](#4-get_nodejs_version).
 - Имена проектов чувствительны к регистру.
+- **Изменение порта** — через [`modify_project`](#6-modify_project) (поле `port`); отдельного метода нет.
 - **Удаление** проекта — через [`batch_operation_project`](#5-batch_operation_project) с `operation_type=delete` (отдельного эндпоинта нет; каталог на диске сохраняется).
+- **Домены** — отдельные методы [`project_*_domain`](#9-управление-доменами), не входят в `modify_project`.

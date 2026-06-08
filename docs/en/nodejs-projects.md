@@ -29,6 +29,7 @@ The `status` field: **`0`** = success, **`-1`** (or `false`) = error. The payloa
 | 6 | [`modify_project`](#6-modify_project) | Modify project settings |
 | 7 | [`pre_env`](#7-pre_env) | Metadata for the create form (Node versions, package managers, users) |
 | 8 | [`create_project`](#8-create_project) | Create a new project |
+| 9 | [Domain management](#9-domain-management) | List / add / remove a project domain |
 
 ---
 
@@ -341,9 +342,39 @@ Create a new Node project. In the panel this is the **"Add project"** button. Th
 
 ---
 
+## 9. Domain management
+
+Project domains (the "Domain management" tab in the "Edit" window) use **separate** endpoints, not part of `modify_project`. All three captured live.
+
+**List — `POST /v2/project/nodejs/project_get_domain`**
+Body: `data={"project_name":"myapp"}`
+```json
+{ "status": 0, "message": [ { "id": 4, "pid": 4, "name": "myapp.example.com", "port": 80, "addtime": "2026-06-08 02:56:11" } ] }
+```
+
+**Add — `POST /v2/project/nodejs/project_add_domain`**
+Body: `data={"project_name":"myapp","domains":["myapp.example.com"]}` *(the `domains` field is an **array** — multiple allowed)*
+```json
+{ "status": 0, "message": { "status_code": 1, "error_msg": "[]", "data": "[1] domain names added successfully, [0] failed!" } }
+```
+
+**Remove — `POST /v2/project/nodejs/project_remove_domain`**
+Body: `data={"project_name":"myapp","domain":"myapp.example.com"}` *(the `domain` field is a **single string**)*
+```json
+{ "status": 0, "message": { "status_code": 1, "error_msg": "", "data": "Domain name deleted successfully" } }
+```
+
+> ⚠️ Note the asymmetry: add takes an **array** `domains`, remove takes a **string** `domain`.
+
+> 🔧 The "Edit" window has more tabs with their own APIs, **not yet captured**: Mapping, URL Rewrite, Configuration, **SSL**, Load, Service status, Module, **Project log**, Site log. Capture via the "discover → execute" recipe.
+
+---
+
 ## Notes
 
 - **`project_script`** in a project's settings is a key from the `scripts` section of `package.json` (see [`get_run_list`](#3-get_run_list)).
 - **`nodejs_version`** is one of the values from [`get_nodejs_version`](#4-get_nodejs_version).
 - Project names are case-sensitive.
+- **Changing the port** is done via [`modify_project`](#6-modify_project) (the `port` field); there is no separate method.
 - **Deleting** a project uses [`batch_operation_project`](#5-batch_operation_project) with `operation_type=delete` (no separate endpoint; the on-disk directory is preserved).
+- **Domains** use the separate [`project_*_domain`](#9-domain-management) methods, not `modify_project`.
