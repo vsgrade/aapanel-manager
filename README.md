@@ -26,6 +26,7 @@
 | 📁 [Files (File Manager)](docs/en/files.md) | list/create/edit/move/copy/permissions/archive/upload/remote-download/delete + recycle bin |
 | 📂 [FTP](docs/en/ftp.md) | FTP users: list, create, change password, enable/disable, delete |
 | ⏱️ [Cron (Scheduler)](docs/en/cron.md) | tasks: list, create, run now, logs, enable/disable, delete |
+| 🛡️ [Firewall (Security)](docs/en/firewall.md) | read firewall state: status, summary, port rules (writes via recipe) |
 | 📊 [Server Monitoring](docs/en/system-monitoring.md) | CPU / RAM / disk (`GetSystemTotal`, `GetDiskInfo`) |
 
 ## Code example
@@ -60,6 +61,7 @@ Undocumented feature? Open the panel → DevTools (Network) → click it → ins
 - [x] Files / File Manager (CRUD, permissions, archive, upload, remote download, recycle bin)
 - [x] FTP users (CRUD, password, enable/disable)
 - [x] Cron / Task Scheduler (CRUD, run now, logs, enable/disable)
+- [x] Firewall (read state: status, summary, port rules — writes via recipe)
 - [x] Server monitoring (CPU/RAM/disk)
 - [x] Verified `api_sk` covers internal endpoints too
 - [ ] More modules (SSL, domains, backups)
