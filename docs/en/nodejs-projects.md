@@ -30,6 +30,7 @@ The `status` field: **`0`** = success, **`-1`** (or `false`) = error. The payloa
 | 7 | [`pre_env`](#7-pre_env) | Metadata for the create form (Node versions, package managers, users) |
 | 8 | [`create_project`](#8-create_project) | Create a new project |
 | 9 | [Domain management](#9-domain-management) | List / add / remove a project domain |
+| 10 | [Logs](#10-logs) | Project log (PM2/build) and site log (nginx) |
 
 ---
 
@@ -366,7 +367,28 @@ Body: `data={"project_name":"myapp","domain":"myapp.example.com"}` *(the `domain
 
 > ⚠️ Note the asymmetry: add takes an **array** `domains`, remove takes a **string** `domain`.
 
-> 🔧 The "Edit" window has more tabs with their own APIs, **not yet captured**: Mapping, URL Rewrite, Configuration, **SSL**, Load, Service status, Module, **Project log**, Site log. Capture via the "discover → execute" recipe.
+---
+
+## 10. Logs
+
+The "Project log" and "Site log" tabs in the "Edit" window. Both captured live; the response is the log text in `message.result`.
+
+**Project log (PM2 / build output) — `POST /v2/project/nodejs/get_project_log`**
+Body: `data={"project_name":"myapp"}`
+```json
+{ "status": 0, "message": { "result": "<log text: PM2 run/build output>" } }
+```
+
+**Site log (nginx access/error) — `POST /v2/site?action=GetSiteLogs`**
+> ⚠️ This is the **generic** site endpoint (`/v2/site`), not Node-specific. The parameter is a **flat** `siteName` field, not wrapped in `data=`.
+Body: `siteName=myapp`
+```json
+{ "status": 0, "message": { "result": "<nginx log text>" } }
+```
+
+> ⚠️ Log responses are **large** and contain real data (IPs, domains, paths) — anonymize when documenting/logging.
+
+> 🔧 The other "Edit" window tabs (**Mapping, URL Rewrite, Configuration, SSL, Load, Service status, Module**) do **not** fire a separate GET on open — they render from [`get_project_info`](#2-get_project_info), and expose their own endpoints only on an action (apply SSL, save a rule, etc.). Capture via the "discover → execute" recipe while performing the action.
 
 ---
 
