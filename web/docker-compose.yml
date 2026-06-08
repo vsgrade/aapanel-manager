@@ -17,7 +17,9 @@ services:
     env_file: .env
     depends_on: [postgres]
     ports: ["3000:3000"]
-    command: sh -c "pnpm prisma migrate deploy && node server.js"
+    # Migrations: run "pnpm prisma migrate deploy" against the DB before/at deploy.
+    # A migrate-on-start entrypoint comes in Phase 3 (the standalone runner image has no Prisma CLI).
+    command: ["node", "server.js"]
 
 volumes:
   pgdata:

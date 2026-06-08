@@ -72,9 +72,16 @@ The build output is a Next.js standalone bundle in `.next/standalone/`.
 docker compose up --build
 ```
 
-The `app` container applies pending migrations automatically on start via
-`pnpm prisma migrate deploy`. See comments in `docker-compose.yml` for
-Phase 3 additions (worker service, robust entrypoint).
+**Important:** the standalone runner image does not include the Prisma CLI, so
+migrations are **not** applied automatically on start. Run them manually before
+or at deploy time — for example from the builder image or bare-metal:
+
+```bash
+pnpm prisma migrate deploy
+```
+
+An automatic migrate-on-start entrypoint is planned for Phase 3 (worker service,
+wait-for-postgres + migrate + start). See comments in `docker-compose.yml`.
 
 ---
 

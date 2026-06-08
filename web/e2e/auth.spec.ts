@@ -16,6 +16,6 @@ test('admin can sign in and reach the dashboard', async ({page}) => {
   await emailInput.fill('admin@example.com');
   await passwordInput.fill('changeme123');
   await page.getByRole('button', {name: /sign in|войти/i}).click();
-  await expect(page).toHaveURL(/\/$|\/$/); // back at root dashboard
+  await expect(page).toHaveURL(/\/$/); // back at root dashboard
   await expect(page.getByRole('button', {name: /sign out|выйти/i})).toBeVisible();
 });
