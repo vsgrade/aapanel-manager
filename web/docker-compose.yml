@@ -1,0 +1,23 @@
+# Phase 1 compose: Postgres + app only.
+# Phase 3 will add: a `worker` service (background poller) and a robust
+# migrate-on-deploy entrypoint (wait-for-postgres + migrate + start).
+# For Phase 1, apply migrations manually with: pnpm prisma migrate deploy
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: aapanel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpass}
+      POSTGRES_DB: aapanel_manager
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+  app:
+    build: .
+    env_file: .env
+    depends_on: [postgres]
+    ports: ["3000:3000"]
+    command: sh -c "pnpm prisma migrate deploy && node server.js"
+
+volumes:
+  pgdata:
