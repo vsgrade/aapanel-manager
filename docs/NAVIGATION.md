@@ -11,6 +11,7 @@
 | Node.js-проекты (список, инфо, старт/стоп…) | [ru/nodejs-projects](ru/nodejs-projects.md) | [en/nodejs-projects](en/nodejs-projects.md) |
 | Сайты PHP/WP (список, создать, удалить) | [ru/sites](ru/sites.md) | [en/sites](en/sites.md) |
 | Базы данных (MySQL + PostgreSQL, CRUD) | [ru/databases](ru/databases.md) | [en/databases](en/databases.md) |
+| Файлы (менеджер: CRUD, права, архивы, загрузка, корзина) | [ru/files](ru/files.md) | [en/files](en/files.md) |
 | Мониторинг сервера (CPU/RAM/диск) | [ru/system-monitoring](ru/system-monitoring.md) | [en/system-monitoring](en/system-monitoring.md) |
 
 ## Код

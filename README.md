@@ -23,6 +23,7 @@
 | 🟢 [Node.js Projects](docs/en/nodejs-projects.md) | list, info, scripts, versions, start/stop — with real responses |
 | 🌐 [Websites (PHP/WP)](docs/en/sites.md) | list, create, delete sites |
 | 🗄️ [Databases](docs/en/databases.md) | MySQL + PostgreSQL CRUD (each engine has its own API) |
+| 📁 [Files (File Manager)](docs/en/files.md) | list/create/edit/move/copy/permissions/archive/upload/remote-download/delete + recycle bin |
 | 📊 [Server Monitoring](docs/en/system-monitoring.md) | CPU / RAM / disk (`GetSystemTotal`, `GetDiskInfo`) |
 
 ## Code example
@@ -54,6 +55,7 @@ Undocumented feature? Open the panel → DevTools (Network) → click it → ins
 - [x] Node.js project management (create, list, info, scripts, versions, start/stop/restart, modify, delete)
 - [x] Websites (PHP/WP): list, create, delete
 - [x] Databases (MySQL + PostgreSQL CRUD)
+- [x] Files / File Manager (CRUD, permissions, archive, upload, remote download, recycle bin)
 - [x] Server monitoring (CPU/RAM/disk)
 - [x] Verified `api_sk` covers internal endpoints too
 - [ ] More modules (FTP, SSL, cron, backups)
