@@ -197,7 +197,7 @@ project_names=["myapp"]&operation_type=start
 | `project_names` | JSON array of strings | project names, e.g. `["myapp"]` or `["a","b"]` |
 | `operation_type` | string | `start`, `stop`, `restart`, **`delete`** |
 
-> ⚠️ `start` and `delete` are verified live. `stop` / `restart` use the same format (same `operation_type` field).
+> ✅ **All four** are verified live: `start`, `stop`, `restart`, `delete` (identical body format). In the UI "Resume project" = `restart`, "Stop project" = `stop`, "Start project" = `start`, "Delete site" = `delete`.
 > **Important:** deleting a Node project goes through **this same** method (`operation_type=delete`) — there is no separate endpoint. Only the project's registration in the panel is removed — **the project directory on disk stays** (the delete dialog offers no "delete directory" option, unlike websites).
 
 **Delete — request body:**
