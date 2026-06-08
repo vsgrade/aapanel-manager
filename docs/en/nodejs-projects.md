@@ -28,7 +28,7 @@ The `status` field: **`0`** = success, **`-1`** (or `false`) = error. The payloa
 | 5 | [`batch_operation_project`](#5-batch_operation_project) | Start / stop / restart / **delete** |
 | 6 | [`modify_project`](#6-modify_project) | Modify project settings |
 | 7 | [`pre_env`](#7-pre_env) | Metadata for the create form (Node versions, package managers, users) |
-| — | [Creating a project](#creating-a-project) | The "Add project" form (two modes) |
+| 8 | [`create_project`](#8-create_project) | Create a new project |
 
 ---
 
@@ -294,15 +294,50 @@ Metadata for the create-project form. The endpoint is **different** from the oth
 
 ---
 
-## Creating a project
+## 8. `create_project`
 
-In the panel, creation is the **"Add project"** button. The form has **two modes**:
+Create a new Node project. In the panel this is the **"Add project"** button. The form has **two modes**:
 
-**1. "Default project"** — the path points to a ready directory with a `package.json`; the run command is chosen from its `scripts` section (or "Custom command" mode). Fields: path, name, run options (script), port, user, Node version, note, domains.
+- **"Default project"** — the path points to a ready directory with a `package.json`; the run command is taken from its `scripts` section (or "Custom command" mode).
+- **"PM2 project"** — runs under PM2: startup file, startup directory, instances (clusters), memory limit, package manager (`pnpm`/`yarn`/`npm`), a "don't install node_modules" flag.
 
-**2. "PM2 project"** — runs under PM2. Fields: name, Node version, **startup file**, **startup directory**, instances (clusters), memory limit (MB), autostart, package manager (`pnpm`/`yarn`/`npm`), a "don't install node_modules" flag.
+> 💡 The **"Path"/"File"** field is filled via the panel's file browser, which under the hood calls `POST /v2/files?action=GetDir`.
 
-> ⚠️ **The exact create request (`create_project`) is not yet captured live.** The path/file selectors in the form are tied to the panel's file picker, which could not be reproduced through automation. The create field set matches [`modify_project`](#6-modify_project) (plus the PM2 fields above). Capture the exact request via the "discover → execute" recipe ([authentication.md](authentication.md)): open the form, fill it, click "Confirm", and inspect the request in DevTools → Network.
+**Parameters (`data`) — "Default project" mode, captured live:**
+```json
+{
+  "project_cwd": "/www/node-projects/myapp",
+  "project_name": "myapp",
+  "project_script": "release",
+  "port": "3001",
+  "run_user": "www",
+  "nodejs_version": "v24.13.0",
+  "project_ps": "myapp",
+  "domains": ["myapp.example.com:80"],
+  "bind_extranet": 1,
+  "is_power_on": 1,
+  "max_memory_limit": 4096,
+  "project_env": ""
+}
+```
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `project_cwd` | string | Project directory (must contain `package.json`) |
+| `project_name` | string | Project name |
+| `project_script` | string | Script key from `package.json` (see [`get_run_list`](#3-get_run_list)) |
+| `port` | string | Port |
+| `run_user` | string | Run user (`www`) |
+| `nodejs_version` | string | Node version (see [`get_nodejs_version`](#4-get_nodejs_version)) |
+| `project_ps` | string | Description / note |
+| `domains` | array | Domains as `"domain:port"`, e.g. `["myapp.example.com:80"]`; empty array = no domain |
+| `bind_extranet` | int | Bind an external domain: `1` = yes, `0` = no |
+| `is_power_on` | int | Autostart on server boot: `1` / `0` |
+| `max_memory_limit` | int | Memory limit, MB (capped at server RAM, see [`pre_env`](#7-pre_env)) |
+| `project_env` | string | Environment variables (as a string) |
+
+> Difference from [`modify_project`](#6-modify_project): creation adds `domains`, `bind_extranet`, `max_memory_limit`, `project_env`.
+
+**Response:** HTTP 200, `status: 0`. *(In our network log the response body had already been evicted; the project is created successfully — the success shape mirrors [`modify_project`](#6-modify_project).)*
 
 ---
 
