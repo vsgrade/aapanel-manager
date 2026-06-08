@@ -31,6 +31,8 @@ The `status` field: **`0`** = success, **`-1`** (or `false`) = error. The payloa
 | 8 | [`create_project`](#8-create_project) | Create a new project |
 | 9 | [Domain management](#9-domain-management) | List / add / remove a project domain |
 | 10 | [Logs](#10-logs) | Project log (PM2/build) and site log (nginx) |
+| 11 | [Modules](#11-modules) | List modules + one-click dependency install |
+| 12 | [SSL](#12-ssl) | SSL status + Let's Encrypt issuance |
 
 ---
 
@@ -388,7 +390,55 @@ Body: `siteName=myapp`
 
 > ⚠️ Log responses are **large** and contain real data (IPs, domains, paths) — anonymize when documenting/logging.
 
-> 🔧 The other "Edit" window tabs (**Mapping, URL Rewrite, Configuration, SSL, Load, Service status, Module**) do **not** fire a separate GET on open — they render from [`get_project_info`](#2-get_project_info), and expose their own endpoints only on an action (apply SSL, save a rule, etc.). Capture via the "discover → execute" recipe while performing the action.
+---
+
+## 11. Modules
+
+The "Module" tab in the "Edit" window — the project's npm dependencies.
+
+**List modules — `POST /v2/project/nodejs/get_project_modules`**
+Body: `data={"project_name":"myapp","project_cwd":"/www/node-projects/myapp"}`
+```json
+{ "status": 0, "message": [ /* installed modules; [] if not installed yet */ ] }
+```
+
+**One-click dependency install — `POST /v2/project/nodejs/install_packages`**
+> The "1-click install" button installs **all** dependencies from the project's `package.json` (`npm/pnpm/yarn install`).
+Body: `data={"project_name":"myapp"}`
+*(long-running — the install runs in the background; check status via `get_project_modules`)*
+
+---
+
+## 12. SSL
+
+The "SSL" tab in the "Edit" window. Sub-tabs: **Current Certs, Commercial certificate, Let's Encrypt, Certificate owner**.
+
+**SSL status — `POST /v2/site?action=GetSSL`**
+> ⚠️ Generic site endpoint (`/v2/site`), flat `siteName` field.
+Body: `siteName=myapp`
+```json
+{ "status": 0, "message": {
+  "status": false, "domain": [{"name": "myapp.example.com"}],
+  "auth_type": "http", "auto_renew": -1,
+  "tls_versions": {"TLSv1": false, "TLSv1.1": true, "TLSv1.2": true, "TLSv1.3": false},
+  "email": "<EMAIL>", "cert_data": null
+} }
+```
+(`status:false` — no certificate installed.)
+
+**Let's Encrypt domain check — `POST /v2/ssl_domain?action=check_domain_automatic`**
+> Before issuing, the panel checks whether the domain can be validated. Flat `domain` field.
+Body: `domain=myapp.example.com`
+```json
+{ "status": 0, "message": { "hash": "", "domain": "myapp.example.com", "support": [] } }
+```
+| Field | Meaning |
+|-------|---------|
+| `support` | available validation methods; **empty array = the domain fails** (no A-record to the server) → issuance won't proceed |
+
+> ⚠️ **The actual Let's Encrypt issue request was not captured:** on the test server the domain has no A-record, so `check_domain_automatic` returned an empty `support` and the panel never reaches the issue request. To capture issuance you need a domain whose A-record points to the server IP; the main issue request then fires after a successful check (capture via the "discover → execute" recipe).
+
+> 🔧 The remaining "Edit" window tabs (**Mapping, URL Rewrite, Configuration, Load, Service status**) fire no GET on open — they render from [`get_project_info`](#2-get_project_info); their endpoints appear on an action (save a rule, etc.).
 
 ---
 
