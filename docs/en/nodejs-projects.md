@@ -438,7 +438,21 @@ Body: `domain=myapp.example.com`
 
 > ⚠️ **The actual Let's Encrypt issue request was not captured:** on the test server the domain has no A-record, so `check_domain_automatic` returned an empty `support` and the panel never reaches the issue request. To capture issuance you need a domain whose A-record points to the server IP; the main issue request then fires after a successful check (capture via the "discover → execute" recipe).
 
-> 🔧 The remaining "Edit" window tabs (**Mapping, URL Rewrite, Configuration, Load, Service status**) fire no GET on open — they render from [`get_project_info`](#2-get_project_info); their endpoints appear on an action (save a rule, etc.).
+---
+
+## 13. Other "Edit" window tabs
+
+Each tab checked **individually** — here is what actually fires on open:
+
+| Tab | Request on open |
+|-----|-----------------|
+| **Configuration** (nginx vhost) | `POST /v2/files?action=GetFileBody`, body `path=/www/server/panel/vhost/nginx/node_<project>.conf` |
+| **URL Rewrite** | `POST /v2/files?action=GetFileBody`, body `path=/www/server/panel/vhost/rewrite/node_<project>.conf` |
+| **Load** (CPU/RAM) | `get_project_info` (`load_info` field) |
+| **Service status** | `get_project_info` (`run`, `listen`, `listen_ok` fields) |
+| **Mapping** (reverse proxy) | fires **no** request on open — the list comes from `get_project_info`; its own endpoint appears only when you add a mapping |
+
+> 💡 **Configuration and URL Rewrite are just file editing** via the generic files API: read with `GetFileBody`, save with the paired **`SaveFileBody`** (body: `path=<file>&data=<content>&encoding=utf-8`). So "edit the nginx config / rewrite rules via API" = write the corresponding file.
 
 ---
 
