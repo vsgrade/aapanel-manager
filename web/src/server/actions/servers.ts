@@ -103,6 +103,7 @@ export async function deleteServerAction(formData: FormData): Promise<SimpleResu
     return {ok: true, message: 'deleted'};
   } catch (err) {
     log.error({err, id}, 'deleteServerAction failed');
+    await recordAudit({userId: user.id, action: 'server.delete', target: id, result: 'error'});
     return {ok: false, message: describeError(err)};
   }
 }
@@ -168,6 +169,7 @@ export async function refreshServerStatusAction(serverId: string): Promise<Simpl
   } catch {
     return {ok: false, message: 'unauthenticated'};
   }
+  if (!serverId) return {ok: false, message: 'missing id'};
   try {
     await pollAndUpsert(serverId);
     await recordAudit({userId: user.id, serverId, action: 'server.refresh', result: 'ok'});
@@ -189,7 +191,7 @@ export async function refreshVisibleStatusesAction(
   } catch {
     return {ok: false, refreshed: 0, failed: serverIds.length};
   }
-  const ids = serverIds.slice(0, 100);
+  const ids = serverIds.filter((id) => typeof id === 'string' && id.length > 0).slice(0, 100);
   const results = await mapLimit(ids, 8, (id) => pollAndUpsert(id));
   const refreshed = results.filter((r) => r.ok).length;
   revalidatePath('/servers');
