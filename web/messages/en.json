@@ -58,5 +58,30 @@
     "firewall": "Firewall",
     "soon": "Soon",
     "notFound": "Server not found"
+  },
+  "projects": {
+    "title": "Node.js Projects",
+    "refresh": "Refresh",
+    "loadFailed": "Failed to load projects",
+    "noProjects": "No projects found",
+    "name": "Name",
+    "status": "Status",
+    "port": "Port",
+    "cpu": "CPU",
+    "mem": "RAM",
+    "actions": "Actions",
+    "running": "Running",
+    "stopped": "Stopped",
+    "unknown": "Unknown",
+    "start": "Start",
+    "stop": "Stop",
+    "restart": "Restart",
+    "logs": "Logs",
+    "started": "Started",
+    "stopped_msg": "Stopped",
+    "restarted": "Restarted",
+    "logsTitle": "Logs: {name}",
+    "logsEmpty": "No logs available",
+    "logsRefresh": "Refresh logs"
   }
 }

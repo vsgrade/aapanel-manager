@@ -58,5 +58,30 @@
     "firewall": "Файрвол",
     "soon": "Скоро",
     "notFound": "Сервер не найден"
+  },
+  "projects": {
+    "title": "Проекты Node.js",
+    "refresh": "Обновить",
+    "loadFailed": "Не удалось загрузить проекты",
+    "noProjects": "Проектов не найдено",
+    "name": "Название",
+    "status": "Статус",
+    "port": "Порт",
+    "cpu": "CPU",
+    "mem": "ОЗУ",
+    "actions": "Действия",
+    "running": "Запущен",
+    "stopped": "Остановлен",
+    "unknown": "Неизвестно",
+    "start": "Запустить",
+    "stop": "Остановить",
+    "restart": "Перезапустить",
+    "logs": "Логи",
+    "started": "Запущен",
+    "stopped_msg": "Остановлен",
+    "restarted": "Перезапущен",
+    "logsTitle": "Логи: {name}",
+    "logsEmpty": "Логи недоступны",
+    "logsRefresh": "Обновить логи"
   }
 }
