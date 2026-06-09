@@ -36,6 +36,29 @@ export interface SystemTotal {
   mem: number | null; // percent 0..100
 }
 
+export type DbEngine = 'mysql' | 'pgsql';
+
+export interface Database {
+  engine: DbEngine;
+  id: number;
+  name: string;
+  username: string;
+  access: string; // mysql: accept · pgsql: listen_ip
+  note: string;   // ps
+  addtime: string;
+  backupCount: number;
+}
+
+export interface DbCreateInput {
+  engine: DbEngine;
+  name: string;
+  user: string;
+  password: string;
+  access?: string;  // default 127.0.0.1
+  note?: string;
+  charset?: string; // mysql only, default utf8mb4
+}
+
 /** Combined server snapshot including disk usage. */
 export interface ServerSnapshot {
   online: boolean;

@@ -1,6 +1,6 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {AaPanelClient} from './client';
-import {AaPanelError, type NodeProject} from './types';
+import {AaPanelError, type NodeProject, type Database} from './types';
 
 // ---------------------------------------------------------------------------
 // Mock undici so tests never touch the network.
@@ -465,5 +465,205 @@ describe('AaPanelClient.getProjectLogs', () => {
 
     const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
     expect(body).toContain('data=');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AaPanelClient.listDatabases
+// ---------------------------------------------------------------------------
+
+describe('AaPanelClient.listDatabases', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('merges MySQL (empty) and PG rows; strips password; maps fields correctly', async () => {
+    // MySQL response: empty list
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {data: []}}) as never,
+    );
+    // PG response: one row with a password that must be stripped
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {
+          data: [
+            {
+              id: 2,
+              name: 'test22',
+              username: 'test22',
+              password: 'SECRET',
+              accept: '127.0.0.1',
+              ps: 'test22',
+              addtime: '2026-01-27 12:48:22',
+              type: 'pgsql',
+              listen_ip: '127.0.0.1/32',
+              backup_count: 0,
+            },
+          ],
+        },
+      }) as never,
+    );
+
+    const client = new AaPanelClient(cfg);
+    const result: Database[] = await client.listDatabases();
+
+    expect(result).toHaveLength(1);
+    const row = result[0];
+    expect(row).toEqual<Database>({
+      engine: 'pgsql',
+      id: 2,
+      name: 'test22',
+      username: 'test22',
+      access: '127.0.0.1/32',
+      note: 'test22',
+      backupCount: 0,
+      addtime: '2026-01-27 12:48:22',
+    });
+    // password must be stripped
+    expect((row as Record<string, unknown>).password).toBeUndefined();
+  });
+
+  it('MySQL body contains table=databases; PG body contains data=', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: 0, message: {data: []}}) as never);
+
+    const client = new AaPanelClient(cfg);
+    await client.listDatabases();
+
+    const mysqlBody = String((fetchMock.mock.calls[0][1] as RequestInit).body);
+    expect(mysqlBody).toContain('table=databases');
+
+    const pgBody = String((fetchMock.mock.calls[1][1] as RequestInit).body);
+    expect(pgBody).toContain('data=');
+  });
+
+  it('MySQL engine failure is isolated — PG rows are still returned', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('mysql down') as never);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {
+          data: [
+            {
+              id: 3,
+              name: 'pgdb',
+              username: 'pguser',
+              password: 'SECRET2',
+              accept: '127.0.0.1',
+              ps: 'note',
+              addtime: '2026-02-01 00:00:00',
+              type: 'pgsql',
+              listen_ip: '%',
+              backup_count: 1,
+            },
+          ],
+        },
+      }) as never,
+    );
+
+    const client = new AaPanelClient(cfg);
+    const result = await client.listDatabases();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].engine).toBe('pgsql');
+    expect(result[0].name).toBe('pgdb');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AaPanelClient.createDatabase
+// ---------------------------------------------------------------------------
+
+describe('AaPanelClient.createDatabase', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('pgsql: resolves; uses correct path; body contains data=', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {result: 'Add_success'}}) as never,
+    );
+
+    const client = new AaPanelClient(cfg);
+    await expect(
+      client.createDatabase({engine: 'pgsql', name: 'd', user: 'u', password: 'p'}),
+    ).resolves.toBeUndefined();
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('v2/database/pgsql/AddDatabase');
+
+    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
+    expect(body).toContain('data=');
+  });
+
+  it('mysql: resolves; uses correct path; body contains dtype=MySQL and codeing=utf8mb4', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {result: 'Setup successful!'}}) as never,
+    );
+
+    const client = new AaPanelClient(cfg);
+    await expect(
+      client.createDatabase({engine: 'mysql', name: 'mydb', user: 'myuser', password: 'pw'}),
+    ).resolves.toBeUndefined();
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('v2/database?action=AddDatabase');
+
+    const body = decodeURIComponent(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body).toContain('dtype=MySQL');
+    expect(body).toContain('codeing=utf8mb4');
+  });
+
+  it('rejects with AaPanelError when panel returns non-zero status', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: -1, message: 'name exists'}) as never,
+    );
+
+    const client = new AaPanelClient(cfg);
+    await expect(
+      client.createDatabase({engine: 'mysql', name: 'dup', user: 'u', password: 'p'}),
+    ).rejects.toMatchObject({
+      kind: 'panel_error',
+      message: expect.stringContaining('name exists'),
+    } satisfies Partial<AaPanelError>);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AaPanelClient.deleteDatabase
+// ---------------------------------------------------------------------------
+
+describe('AaPanelClient.deleteDatabase', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('pgsql: uses correct path; body contains data=', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {result: 'Deleted...'}}) as never,
+    );
+
+    const client = new AaPanelClient(cfg);
+    await client.deleteDatabase('pgsql', {id: 2, name: 'test22'});
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('v2/database/pgsql/DeleteDatabase');
+
+    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
+    expect(body).toContain('data=');
+  });
+
+  it('mysql: uses correct path; body contains name= and id=', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: {result: 'Deleted...'}}) as never,
+    );
+
+    const client = new AaPanelClient(cfg);
+    await client.deleteDatabase('mysql', {id: 5, name: 'mydb'});
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('v2/database?action=DeleteDatabase');
+
+    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
+    expect(body).toContain('name=');
+    expect(body).toContain('id=');
   });
 });

@@ -8,6 +8,9 @@ import {
   type ServerMetrics,
   type NodeProject,
   type ProjectOperation,
+  type Database,
+  type DbEngine,
+  type DbCreateInput,
 } from './types';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -290,6 +293,194 @@ export class AaPanelClient {
    * GetSystemTotal is REQUIRED — if it throws the caller treats the server as offline.
    * GetDiskInfo and GetNetWork are best-effort: failures produce null sub-metrics only.
    */
+  // ── Database methods ──────────────────────────────────────────────────────
+
+  /**
+   * Unwraps the standard aaPanel envelope {status, message}.
+   * Throws AaPanelError('panel_error') when status !== 0.
+   */
+  private unwrapEnvelope<T = {data?: unknown[]; result?: string}>(
+    raw: {status?: number; message?: unknown},
+  ): T {
+    if (raw?.status !== 0) {
+      const m = raw?.message;
+      const msg =
+        typeof m === 'string'
+          ? m
+          : m && typeof m === 'object' && 'result' in m
+            ? String((m as {result: unknown}).result)
+            : 'Operation failed';
+      throw new AaPanelError('panel_error', msg);
+    }
+    return raw.message as T;
+  }
+
+  /**
+   * List all databases across MySQL and PostgreSQL engines.
+   *
+   * Each engine is queried independently; a failure in one engine contributes
+   * an empty array for that engine rather than throwing. Passwords are never
+   * included in the normalized output.
+   *
+   * Field sources: docs/en/databases.md
+   *   MySQL  POST /v2/data?action=getData  (flat body: table=databases&p=1&limit=...)
+   *   PG     POST /v2/database/pgsql/get_list  (body: data=<JSON {p,limit,search,table}>)
+   */
+  async listDatabases(params: {p?: number; limit?: number; search?: string} = {}): Promise<Database[]> {
+    const p = params.p ?? 1;
+    const limit = params.limit ?? 1000;
+    const search = params.search ?? '';
+
+    const [mysqlRows, pgRows] = await Promise.all([
+      (async (): Promise<Database[]> => {
+        try {
+          const raw = await this.post<{
+            status: number;
+            message: {
+              data: Array<{
+                id: number;
+                name: string;
+                username: string;
+                password?: string;
+                accept: string;
+                ps: string;
+                addtime: string;
+                backup_count?: number;
+              }>;
+            };
+          }>('v2/data?action=getData', {
+            table: 'databases',
+            p: String(p),
+            limit: String(limit),
+            search,
+          });
+          const msg = this.unwrapEnvelope<{data: typeof raw.message.data}>(raw);
+          return (msg.data ?? []).map((r) => ({
+            engine: 'mysql' as DbEngine,
+            id: r.id,
+            name: r.name,
+            username: r.username,
+            access: r.accept,
+            note: r.ps,
+            addtime: r.addtime,
+            backupCount: r.backup_count ?? 0,
+          }));
+        } catch {
+          return [];
+        }
+      })(),
+      (async (): Promise<Database[]> => {
+        try {
+          const data = JSON.stringify({p, limit, search, table: 'databases'});
+          const raw = await this.post<{
+            status: number;
+            message: {
+              data: Array<{
+                id: number;
+                name: string;
+                username: string;
+                password?: string;
+                accept: string;
+                ps: string;
+                addtime: string;
+                type?: string;
+                listen_ip: string;
+                backup_count?: number;
+              }>;
+            };
+          }>('v2/database/pgsql/get_list', {data});
+          const msg = this.unwrapEnvelope<{data: typeof raw.message.data}>(raw);
+          return (msg.data ?? []).map((r) => ({
+            engine: 'pgsql' as DbEngine,
+            id: r.id,
+            name: r.name,
+            username: r.username,
+            access: r.listen_ip,
+            note: r.ps,
+            addtime: r.addtime,
+            backupCount: r.backup_count ?? 0,
+          }));
+        } catch {
+          return [];
+        }
+      })(),
+    ]);
+
+    return [...mysqlRows, ...pgRows];
+  }
+
+  /**
+   * Create a MySQL or PostgreSQL database.
+   *
+   * Field sources: docs/en/databases.md
+   *   MySQL POST /v2/database?action=AddDatabase (flat body)
+   *   PG    POST /v2/database/pgsql/AddDatabase  (body: data=<JSON>)
+   */
+  async createDatabase(input: DbCreateInput): Promise<void> {
+    const access = input.access ?? '127.0.0.1';
+    const note = input.note ?? '';
+
+    if (input.engine === 'pgsql') {
+      const data = JSON.stringify({
+        sid: 0,
+        name: input.name,
+        db_user: input.user,
+        password: input.password,
+        active: false,
+        ssl: '',
+        ps: note,
+      });
+      const raw = await this.post<{status: number; message: unknown}>(
+        'v2/database/pgsql/AddDatabase',
+        {data},
+      );
+      this.unwrapEnvelope(raw);
+    } else {
+      const charset = input.charset ?? 'utf8mb4';
+      const raw = await this.post<{status: number; message: unknown}>(
+        'v2/database?action=AddDatabase',
+        {
+          sid: '0',
+          name: input.name,
+          codeing: charset,
+          db_user: input.user,
+          password: input.password,
+          dataAccess: access,
+          address: access,
+          active: 'false',
+          ssl: '',
+          ps: note,
+          dtype: 'MySQL',
+        },
+      );
+      this.unwrapEnvelope(raw);
+    }
+  }
+
+  /**
+   * Delete a MySQL or PostgreSQL database by id and name.
+   *
+   * Field sources: docs/en/databases.md
+   *   MySQL POST /v2/database?action=DeleteDatabase (flat body: name=&id=)
+   *   PG    POST /v2/database/pgsql/DeleteDatabase   (body: data=<JSON {id,name}>)
+   */
+  async deleteDatabase(engine: DbEngine, opts: {id: number; name: string}): Promise<void> {
+    if (engine === 'pgsql') {
+      const data = JSON.stringify({id: opts.id, name: opts.name});
+      const raw = await this.post<{status: number; message: unknown}>(
+        'v2/database/pgsql/DeleteDatabase',
+        {data},
+      );
+      this.unwrapEnvelope(raw);
+    } else {
+      const raw = await this.post<{status: number; message: unknown}>(
+        'v2/database?action=DeleteDatabase',
+        {name: opts.name, id: String(opts.id)},
+      );
+      this.unwrapEnvelope(raw);
+    }
+  }
+
   async getMetrics(): Promise<ServerMetrics> {
     // Required: if GetSystemTotal fails, propagate — server is offline.
     const sys = await this.request<{

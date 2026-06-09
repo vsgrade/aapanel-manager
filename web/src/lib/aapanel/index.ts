@@ -17,4 +17,4 @@ export function createClientForServer(server: ServerCreds): AaPanelClient {
 
 export {AaPanelClient} from './client';
 export {AaPanelError} from './types';
-export type {SystemTotal, ServerSnapshot, ServerMetrics, AaPanelErrorKind, NodeProject, ProjectOperation} from './types';
+export type {SystemTotal, ServerSnapshot, ServerMetrics, AaPanelErrorKind, NodeProject, ProjectOperation, Database, DbEngine, DbCreateInput} from './types';
