@@ -88,3 +88,84 @@ describe('AaPanelClient.collectStatus', () => {
     expect(snap.mem).toBeCloseTo(30);
   });
 });
+
+// ---------------------------------------------------------------------------
+// GetNetWork response shape (docs/en/system-monitoring.md §GetNetWork):
+//   { up: number, down: number, load: [one, five, fifteen], ... }
+//   up/down are current speeds in KB/s; load is the system load average array.
+// GetSystemTotal response shape (docs/en/system-monitoring.md §GetSystemTotal):
+//   { cpuRealUsed, cpuNum, memTotal, memRealUsed, ... }  — no load field here.
+// ---------------------------------------------------------------------------
+
+describe('AaPanelClient.getMetrics', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('maps a full happy-path response to ServerMetrics', async () => {
+    // Call order: 1=GetSystemTotal, 2=GetDiskInfo, 3=GetNetWork
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        cpuRealUsed: 5.9,
+        cpuNum: 6,
+        memTotal: 5782,
+        memRealUsed: 1125,
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse([
+        {path: '/', size: ['97G', '29G', '64G', '40%']},
+      ]),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        up: 128,
+        down: 256,
+        load: [0.5, 0.8, 1.2],
+      }),
+    );
+
+    const client = new AaPanelClient({baseUrl: 'https://h:8888', apiSk: 'k', insecureTLS: true});
+    const metrics = await client.getMetrics();
+
+    expect(metrics.cpuPercent).toBeCloseTo(5.9);
+    expect(metrics.cores).toBe(6);
+    expect(metrics.memUsedMb).toBe(1125);
+    expect(metrics.memTotalMb).toBe(5782);
+    expect(metrics.memPercent).toBeCloseTo((1125 / 5782) * 100);
+    expect(metrics.diskPercent).toBeCloseTo(40);
+    expect(metrics.netUpKbps).toBe(128);
+    expect(metrics.netDownKbps).toBe(256);
+    expect(metrics.load).toEqual({one: 0.5, five: 0.8, fifteen: 1.2});
+  });
+
+  it('resolves with null network fields when GetNetWork rejects (best-effort)', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        cpuRealUsed: 10,
+        cpuNum: 4,
+        memTotal: 1000,
+        memRealUsed: 400,
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse([{path: '/', size: ['50G', '10G', '40G', '20%']}]),
+    );
+    fetchMock.mockRejectedValueOnce(new TypeError('network fetch failed'));
+
+    const client = new AaPanelClient({baseUrl: 'https://h:8888', apiSk: 'k', insecureTLS: true});
+    const metrics = await client.getMetrics();
+
+    // CPU and mem must still resolve correctly
+    expect(metrics.cpuPercent).toBeCloseTo(10);
+    expect(metrics.memPercent).toBeCloseTo(40);
+    // Network becomes null on failure
+    expect(metrics.netUpKbps).toBeNull();
+    expect(metrics.netDownKbps).toBeNull();
+    // Load also becomes null when GetNetWork fails
+    expect(metrics.load).toBeNull();
+    // Disk still works
+    expect(metrics.diskPercent).toBeCloseTo(20);
+  });
+});

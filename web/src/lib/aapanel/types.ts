@@ -32,3 +32,20 @@ export interface ServerSnapshot {
   mem: number | null; // percent 0..100
   disk: number | null; // percent 0..100, best-effort (null on failure)
 }
+
+/**
+ * Rich server metrics for the Overview page.
+ * Field sources: docs/en/system-monitoring.md (GetSystemTotal, GetDiskInfo, GetNetWork).
+ * Nulls indicate the sub-metric was unavailable (best-effort fields: disk, network, load).
+ */
+export interface ServerMetrics {
+  cpuPercent: number | null;
+  cores: number | null;
+  load: {one: number; five: number; fifteen: number} | null;
+  memUsedMb: number | null;
+  memTotalMb: number | null;
+  memPercent: number | null;
+  diskPercent: number | null;
+  netUpKbps: number | null;
+  netDownKbps: number | null;
+}

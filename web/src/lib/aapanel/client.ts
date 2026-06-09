@@ -1,6 +1,6 @@
 import {Agent} from 'undici';
 import {sign} from './signing';
-import {AaPanelError, type AaPanelClientConfig, type SystemTotal, type ServerSnapshot} from './types';
+import {AaPanelError, type AaPanelClientConfig, type SystemTotal, type ServerSnapshot, type ServerMetrics} from './types';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
@@ -127,5 +127,86 @@ export class AaPanelClient {
       disk = null;
     }
     return {online: sys.online, cpu: sys.cpu, mem: sys.mem, disk};
+  }
+
+  /**
+   * Realtime network speeds and system load average.
+   *
+   * Field mapping sourced from docs/en/system-monitoring.md §GetNetWork:
+   *   up   → upload speed, KB/s
+   *   down → download speed, KB/s
+   *   load → array [1-min, 5-min, 15-min] load averages
+   *
+   * Returns {up: null, down: null, load: null} if the request throws — callers
+   * treat all network/load fields as best-effort.
+   */
+  private async getNetwork(): Promise<{up: number | null; down: number | null; load: {one: number; five: number; fifteen: number} | null}> {
+    const raw = await this.request<{up?: unknown; down?: unknown; load?: unknown}>('GetNetWork');
+    const up = typeof raw.up === 'number' ? raw.up : null;
+    const down = typeof raw.down === 'number' ? raw.down : null;
+    let load: {one: number; five: number; fifteen: number} | null = null;
+    if (Array.isArray(raw.load) && raw.load.length >= 3) {
+      const [one, five, fifteen] = raw.load as unknown[];
+      if (typeof one === 'number' && typeof five === 'number' && typeof fifteen === 'number') {
+        load = {one, five, fifteen};
+      }
+    }
+    return {up, down, load};
+  }
+
+  /**
+   * Rich server metrics for the Overview page.
+   *
+   * Field mapping sourced from docs/en/system-monitoring.md:
+   *   GetSystemTotal: cpuRealUsed (cpu %), cpuNum (cores),
+   *                   memTotal/memRealUsed (MB)
+   *   GetDiskInfo:    size[3] → use% string e.g. "40%"
+   *   GetNetWork:     up/down (KB/s), load ([one, five, fifteen])
+   *
+   * GetSystemTotal is REQUIRED — if it throws the caller treats the server as offline.
+   * GetDiskInfo and GetNetWork are best-effort: failures produce null sub-metrics only.
+   */
+  async getMetrics(): Promise<ServerMetrics> {
+    // Required: if GetSystemTotal fails, propagate — server is offline.
+    const sys = await this.request<{
+      cpuRealUsed?: number;
+      cpuNum?: number;
+      memTotal?: number;
+      memRealUsed?: number;
+    }>('GetSystemTotal');
+
+    const cpuPercent = typeof sys.cpuRealUsed === 'number' ? sys.cpuRealUsed : null;
+    const cores = typeof sys.cpuNum === 'number' ? sys.cpuNum : null;
+    const memTotalMb = typeof sys.memTotal === 'number' ? sys.memTotal : null;
+    const memUsedMb = typeof sys.memRealUsed === 'number' ? sys.memRealUsed : null;
+    const memPercent =
+      memTotalMb !== null && memTotalMb > 0 && memUsedMb !== null
+        ? (memUsedMb / memTotalMb) * 100
+        : null;
+
+    // Best-effort: disk failure does not fail the whole metrics call.
+    let diskPercent: number | null = null;
+    try {
+      diskPercent = await this.getDiskInfo();
+    } catch {
+      diskPercent = null;
+    }
+
+    // Best-effort: network/load failure produces null sub-metrics only.
+    let netUpKbps: number | null = null;
+    let netDownKbps: number | null = null;
+    let load: {one: number; five: number; fifteen: number} | null = null;
+    try {
+      const net = await this.getNetwork();
+      netUpKbps = net.up;
+      netDownKbps = net.down;
+      load = net.load;
+    } catch {
+      netUpKbps = null;
+      netDownKbps = null;
+      load = null;
+    }
+
+    return {cpuPercent, cores, load, memUsedMb, memTotalMb, memPercent, diskPercent, netUpKbps, netDownKbps};
   }
 }
