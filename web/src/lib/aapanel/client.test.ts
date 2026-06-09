@@ -47,3 +47,44 @@ describe('AaPanelClient.getSystemTotal', () => {
     await expect(client.getSystemTotal()).rejects.toMatchObject({kind: 'timeout'});
   });
 });
+
+describe('AaPanelClient.getDiskInfo', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns the root mount usage percent', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([
+        {path: '/', size: ['100G', '40G', '60G', '40%']},
+        {path: '/boot', size: ['1G', '0.5G', '0.5G', '50%']},
+      ]), {status: 200, headers: {'content-type': 'application/json'}}),
+    );
+    const client = new AaPanelClient({baseUrl: 'https://h:8888', apiSk: 'k', insecureTLS: true});
+    expect(await client.getDiskInfo()).toBeCloseTo(40);
+  });
+
+  it('returns null when no parsable mount is present', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([]), {status: 200, headers: {'content-type': 'application/json'}}),
+    );
+    const client = new AaPanelClient({baseUrl: 'https://h:8888', apiSk: 'k', insecureTLS: true});
+    expect(await client.getDiskInfo()).toBeNull();
+  });
+});
+
+describe('AaPanelClient.collectStatus', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('combines system + disk; disk failure does not fail the snapshot', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({cpuRealUsed: 10, memTotal: 100, memRealUsed: 30}), {status: 200, headers: {'content-type': 'application/json'}}),
+    );
+    fetchMock.mockRejectedValueOnce(new TypeError('disk fetch failed'));
+    const client = new AaPanelClient({baseUrl: 'https://h:8888', apiSk: 'k', insecureTLS: true});
+    const snap = await client.collectStatus();
+    expect(snap).toMatchObject({online: true, cpu: 10, disk: null});
+    expect(snap.mem).toBeCloseTo(30);
+  });
+});

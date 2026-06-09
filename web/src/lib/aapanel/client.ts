@@ -1,6 +1,6 @@
 import {Agent} from 'undici';
 import {sign} from './signing';
-import {AaPanelError, type AaPanelClientConfig, type SystemTotal} from './types';
+import {AaPanelError, type AaPanelClientConfig, type SystemTotal, type ServerSnapshot} from './types';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
@@ -91,5 +91,41 @@ export class AaPanelClient {
         ? (raw.memRealUsed / raw.memTotal) * 100
         : null;
     return {online: true, cpu, mem};
+  }
+
+  /**
+   * Disk usage percent of the root mount ('/'), else the first parsable mount; null if none.
+   *
+   * Response shape sourced from docs/en/system-monitoring.md (real v8 panel):
+   *   Array of { path, size: [total, used, free, "32%"] }
+   *   size[3] is the use-percent string (e.g. "32%").
+   */
+  async getDiskInfo(): Promise<number | null> {
+    const raw = await this.request<Array<{path?: string; size?: unknown[]}>>('GetDiskInfo');
+    if (!Array.isArray(raw) || raw.length === 0) return null;
+    const parsePercent = (m: {size?: unknown[]}): number | null => {
+      const pct = m.size?.[3]; // aaPanel: size = [total, used, free, "40%"]
+      if (typeof pct !== 'string') return null;
+      const n = Number.parseFloat(pct.replace('%', ''));
+      return Number.isFinite(n) ? n : null;
+    };
+    const root = raw.find((m) => m.path === '/');
+    return parsePercent(root ?? raw[0]);
+  }
+
+  /**
+   * One snapshot for the cache. System metrics are required (failure ⇒ caller treats server
+   * offline); disk is best-effort (null on failure) so a flaky disk call never hides a
+   * healthy server.
+   */
+  async collectStatus(): Promise<ServerSnapshot> {
+    const sys = await this.getSystemTotal();
+    let disk: number | null = null;
+    try {
+      disk = await this.getDiskInfo();
+    } catch {
+      disk = null;
+    }
+    return {online: sys.online, cpu: sys.cpu, mem: sys.mem, disk};
   }
 }

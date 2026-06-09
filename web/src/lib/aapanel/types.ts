@@ -24,3 +24,11 @@ export interface SystemTotal {
   cpu: number | null; // percent 0..100
   mem: number | null; // percent 0..100
 }
+
+/** Combined server snapshot including disk usage. */
+export interface ServerSnapshot {
+  online: boolean;
+  cpu: number | null; // percent 0..100
+  mem: number | null; // percent 0..100
+  disk: number | null; // percent 0..100, best-effort (null on failure)
+}
