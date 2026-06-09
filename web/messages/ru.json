@@ -97,5 +97,31 @@
     "logsTitle": "Логи: {name}",
     "logsEmpty": "Логи недоступны",
     "logsRefresh": "Обновить логи"
+  },
+  "databases": {
+    "title": "Базы данных",
+    "add": "Добавить БД",
+    "engine": "Движок",
+    "mysql": "MySQL",
+    "pgsql": "PostgreSQL",
+    "all": "Все",
+    "name": "Имя БД",
+    "user": "Пользователь",
+    "password": "Пароль",
+    "access": "Хост доступа",
+    "note": "Заметка",
+    "charset": "Кодировка",
+    "addtime": "Дата создания",
+    "actions": "Действия",
+    "delete": "Удалить",
+    "cancel": "Отмена",
+    "create": "Создать",
+    "refresh": "Обновить",
+    "noDatabases": "Баз данных не найдено",
+    "loadFailed": "Не удалось загрузить базы данных",
+    "confirmDeleteLabel": "Введите имя базы для подтверждения",
+    "created": "База данных создана",
+    "deleted": "База данных удалена",
+    "filterEngine": "Фильтр по движку"
   }
 }

@@ -97,5 +97,31 @@
     "logsTitle": "Logs: {name}",
     "logsEmpty": "No logs available",
     "logsRefresh": "Refresh logs"
+  },
+  "databases": {
+    "title": "Databases",
+    "add": "Add database",
+    "engine": "Engine",
+    "mysql": "MySQL",
+    "pgsql": "PostgreSQL",
+    "all": "All",
+    "name": "Database name",
+    "user": "User",
+    "password": "Password",
+    "access": "Access host",
+    "note": "Note",
+    "charset": "Charset",
+    "addtime": "Created",
+    "actions": "Actions",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "create": "Create",
+    "refresh": "Refresh",
+    "noDatabases": "No databases found",
+    "loadFailed": "Failed to load databases",
+    "confirmDeleteLabel": "Type the database name to confirm",
+    "created": "Database created",
+    "deleted": "Database deleted",
+    "filterEngine": "Filter by engine"
   }
 }

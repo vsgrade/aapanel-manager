@@ -12,7 +12,6 @@ export interface SectionNavProps {
 }
 
 const DISABLED_SECTIONS = [
-  'databases',
   'files',
   'ftp',
   'cron',
@@ -25,10 +24,12 @@ export function SectionNav({id}: SectionNavProps) {
 
   const overviewHref = `/servers/${id}` as Route;
   const projectsHref = `/servers/${id}/projects` as Route;
+  const databasesHref = `/servers/${id}/databases` as Route;
 
   const links = [
     {href: overviewHref, label: t('overview'), exact: true},
     {href: projectsHref, label: t('projects'), exact: false},
+    {href: databasesHref, label: t('databases'), exact: false},
   ] satisfies Array<{href: Route; label: string; exact: boolean}>;
 
   return (
