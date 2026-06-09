@@ -22,6 +22,12 @@
 - TypeScript-обёртка (`AaPanelClient`, 2 режима авторизации): [`examples/javascript/aapanel-client.ts`](../examples/javascript/aapanel-client.ts)
 - Шаблон окружения: [`.env.example`](../.env.example)
 
+## Приложение (web/)
+
+- Спека: [aapanel-manager-app-design](superpowers/specs/2026-06-08-aapanel-manager-app-design.md)
+- Планы: [Фаза 1 — фундамент](superpowers/plans/2026-06-08-phase-1-foundation.md) · [Фаза 2 — серверы](superpowers/plans/2026-06-09-phase-2-servers.md)
+- Маршрут серверов: `web/src/app/(app)/servers/page.tsx` · Server Actions: `web/src/server/actions/servers.ts` · клиент панели: `web/src/lib/aapanel/`
+
 ## Главные страницы
 
 - [README (EN)](../README.md) · [README (RU)](../README.ru.md)

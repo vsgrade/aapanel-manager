@@ -2,8 +2,8 @@
 
 > Карта репозитория — источник истины по структуре. Обновляется при **структурных** изменениях (добавил/удалил/переместил файл), не после каждой правки текста. См. [PROJECT_RULES.md](../PROJECT_RULES.md) §8.
 
-**Тип проекта:** документация (Markdown, RU + EN) + пример-обёртка на TypeScript.
-**Фаза:** документация. Следующая фаза — Next.js-приложение (см. README → Планы).
+**Тип проекта:** документация API (Markdown, RU + EN) + **Next.js-приложение** управления aaPanel (`web/`).
+**Фаза:** приложение. Документация — снята (см. ниже). Приложение: Фаза 1 (фундамент) и Фаза 2 (серверы) готовы; источник истины — `docs/superpowers/specs/2026-06-08-aapanel-manager-app-design.md`.
 
 ## Структура
 
@@ -43,6 +43,24 @@ api aapanel/
 | `docs/{ru,en}/system-monitoring.md` | `GetSystemTotal`, `GetDiskInfo` + реальные ответы | authentication.md | — |
 | `examples/javascript/aapanel-client.ts` | Класс `AaPanelClient`: 2 режима авторизации, Node.js + система | Node 18+ (fetch, node:crypto), опц. `undici` | при смене сигнатур API — обновить и доку |
 | `.env.example` | Шаблон переменных окружения | — | рассинхрон с тем, что читает обёртка |
+
+## Приложение (web/) — Фаза 1–2
+
+Next.js 16 (App Router, RSC, Server Actions) + TS strict + Prisma v7/Postgres + Auth.js v5 (JWT, роли) + Tailwind/shadcn (base-nova/Base UI) + TanStack Table v8 + next-intl (RU/EN). Подробности — спека приложения.
+
+| Путь | Назначение |
+|------|-----------|
+| `web/src/lib/aapanel/{signing,client,types,index}.ts` | Типизированный клиент панели: подпись `api_sk`, `getSystemTotal`, самоподписанный TLS (undici), нормализованные ошибки; фабрика клиента под сервер (расшифровка ключа только на сервере) |
+| `web/src/lib/crypto/secret-box.ts`, `lib/config/secrets.ts` | AES-256-GCM шифрование `api_sk` + доступ к ключу |
+| `web/src/lib/validation/server.ts` | zod-схемы: create/update/test + устойчивые list-параметры (из URL) |
+| `web/src/lib/servers/query.ts` | `listServers` — чтение из кеша (server-side фильтр/сортировка/пагинация; `apiSkEnc` не выбирается) |
+| `web/src/lib/audit.ts`, `lib/utils/concurrency.ts` | Best-effort аудит; `mapLimit` (ограниченная параллельность) |
+| `web/src/server/actions/servers.ts` | Server Actions: CRUD + testConnection + refresh (одной/видимых); проверка ролей + аудит |
+| `web/src/components/servers/*` | Таблица (TanStack v8), колонки, статус-бейдж, тулбар, диалоги add/edit/delete |
+| `web/src/app/(app)/servers/{page,loading,error}.tsx` | Маршрут `/servers` (RSC) |
+| `web/messages/{ru,en}.json` | Строки UI (namespace `servers`) |
+
+**Безопасность:** `api_sk` шифруется в покое; расшифровка только в Server Actions/фабрике (`server-only`); в кеш-выборку и клиент секрет не попадает; мутации — только admin; все мутации в `AuditLog`.
 
 ## Точки соответствия (держать синхронными)
 

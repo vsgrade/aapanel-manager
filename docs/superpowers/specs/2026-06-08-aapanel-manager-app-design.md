@@ -54,8 +54,9 @@
 - **Next.js (App Router) + TypeScript (strict)** — RSC + Server Actions, бэкенд-прокси.
 - **PostgreSQL + Prisma** — пользователи/роли, серверы (шифр. креды), кеш статусов, аудит.
 - **Auth.js (NextAuth v5)** — credentials, сессии, роли admin/viewer.
-- **UI:** Tailwind CSS + **shadcn/ui** (Radix) + **Framer Motion** (анимации) + **TanStack Table** (плотные таблицы) + **TanStack Query** (клиентский кеш/живые обновления).
-- **Валидация:** zod; формы — react-hook-form.
+- **UI:** Tailwind CSS + **shadcn/ui** (стиль **base-nova / Base UI**, не Radix — триггеры через `render={…}`) + **Framer Motion** + **TanStack Table v8** (плотные таблицы; v9-alpha не используем). **TanStack Query** отложен до Фазы 3 (нужен для живых SSE-обновлений).
+- **Валидация:** zod; формы — **Server Actions + `useActionState`/`useTransition`** (react-hook-form не используется — меньше клиентского кода, чище для RSC).
+- **Самоподписанный TLS:** `undici` (явная зависимость) — `Agent` с `rejectUnauthorized:false` как `dispatcher` глобального fetch; создаётся лениво и только при `insecureTLS`.
 - **Логирование:** pino (структурное, серверное).
 - **i18n:** next-intl (RU + EN).
 - **Тесты:** Vitest (unit/интеграция) + Playwright (e2e).
@@ -143,7 +144,7 @@ web/
 ## 15. Порядок сборки MVP (фазы)
 
 1. **Фундамент:** `web/` каркас (Next.js+TS, Tailwind+shadcn), Prisma+Postgres, Auth.js (admin/viewer), Docker + bare-metal, каркас i18n (RU/EN), базовый AppShell.
-2. **Серверы (admin):** CRUD сервера (шифр. креды) + таблица серверов (из кеша) + ручное обновление.
+2. **Серверы (admin): ✅ ГОТОВО (2026-06-09).** CRUD сервера (шифр. креды) + таблица серверов из кеша (TanStack v8: сортировка/ширина/скрытие колонок, server-side пагинация/поиск/фильтр через URL) + ручное обновление (одной строки и видимой страницы — гибрид «живая видимая страница»). Роли: viewer — только чтение, мутации только admin. План: `docs/superpowers/plans/2026-06-09-phase-2-servers.md`.
 3. **Воркер + кеш + SSE:** фоновый опрос с ограниченной параллельностью, живой дашборд.
 4. **Обзор сервера** (живые метрики) + **Проекты** (все типы; чтение + старт/стоп/рестарт/логи для Node; остальные типы — по мере снятия API).
 5. **Итерации:** Базы данных, Файлы, FTP, Cron, Firewall; UI аудита; полировка/анимации.
