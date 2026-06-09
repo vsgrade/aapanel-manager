@@ -4,6 +4,7 @@ import {serverListParamsSchema} from '@/lib/validation/server';
 import {listServers} from '@/lib/servers/query';
 import {ServersTable} from '@/components/servers/servers-table';
 import {ServersToolbar} from '@/components/servers/servers-toolbar';
+import {ServersLive} from '@/components/servers/servers-live';
 
 export default async function ServersPage({
   searchParams,
@@ -23,6 +24,7 @@ export default async function ServersPage({
         <h1 className="text-xl font-semibold">{t('title')}</h1>
       </div>
       <ServersToolbar params={params} isAdmin={isAdmin} visibleIds={rows.map((r) => r.id)} />
+      <ServersLive />
       {rows.length === 0 ? (
         <p className="text-muted-foreground">{t('noServers')}</p>
       ) : (
