@@ -46,5 +46,17 @@
     "perPage": "Per page",
     "prev": "Prev",
     "next": "Next"
+  },
+  "detail": {
+    "backToServers": "Servers",
+    "overview": "Overview",
+    "projects": "Projects",
+    "databases": "Databases",
+    "files": "Files",
+    "ftp": "FTP",
+    "cron": "Cron",
+    "firewall": "Firewall",
+    "soon": "Soon",
+    "notFound": "Server not found"
   }
 }

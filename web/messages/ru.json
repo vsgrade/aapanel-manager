@@ -46,5 +46,17 @@
     "perPage": "На странице",
     "prev": "Назад",
     "next": "Вперёд"
+  },
+  "detail": {
+    "backToServers": "Серверы",
+    "overview": "Обзор",
+    "projects": "Проекты",
+    "databases": "Базы данных",
+    "files": "Файлы",
+    "ftp": "FTP",
+    "cron": "Cron",
+    "firewall": "Файрвол",
+    "soon": "Скоро",
+    "notFound": "Сервер не найден"
   }
 }
