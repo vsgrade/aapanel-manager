@@ -10,6 +10,7 @@ async function main(): Promise<void> {
 
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let inFlight: Promise<void> = Promise.resolve();
 
   const tick = async (): Promise<void> => {
     if (stopped) return;
@@ -27,7 +28,7 @@ async function main(): Promise<void> {
     } catch (err) {
       log.error({err}, 'worker: cycle failed');
     } finally {
-      if (!stopped) timer = setTimeout(() => void tick(), env.POLL_INTERVAL_MS);
+      if (!stopped) timer = setTimeout(() => {inFlight = tick();}, env.POLL_INTERVAL_MS);
     }
   };
 
@@ -35,13 +36,15 @@ async function main(): Promise<void> {
     log.info({sig}, 'worker: shutting down');
     stopped = true;
     if (timer) clearTimeout(timer);
+    await inFlight.catch(() => undefined); // let an in-flight cycle finish
     await prisma.$disconnect().catch(() => undefined);
     process.exit(0);
   };
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
-  await tick();
+  inFlight = tick();
+  await inFlight;
 }
 
 void main();

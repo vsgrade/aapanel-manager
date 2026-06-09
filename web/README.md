@@ -31,8 +31,8 @@ Edit `.env` and fill in:
 | `APP_ENCRYPTION_KEY` | `openssl rand -hex 32` |
 | `SEED_ADMIN_EMAIL` | e.g. `admin@example.com` |
 | `SEED_ADMIN_PASSWORD` | e.g. `changeme123` (change in prod) |
-| `POLL_INTERVAL_MS` | Worker poll interval in ms (default: `30000`) |
-| `WORKER_CONCURRENCY` | Max parallel server polls (default: `5`) |
+| `POLL_INTERVAL_MS` | Worker poll interval in ms (default: `60000`) |
+| `WORKER_CONCURRENCY` | Max parallel server polls (default: `16`) |
 
 ---
 
@@ -173,8 +173,8 @@ DATABASE_URL=postgresql://aapanel:<POSTGRES_PASSWORD>@postgres:5432/aapanel_mana
 POSTGRES_PASSWORD=<strong password>
 AUTH_SECRET=<openssl rand -base64 32>
 APP_ENCRYPTION_KEY=<openssl rand -hex 32>
-POLL_INTERVAL_MS=30000
-WORKER_CONCURRENCY=5
+POLL_INTERVAL_MS=60000
+WORKER_CONCURRENCY=16
 ```
 
 > **Note:** the `migrate` service uses the `worker` build stage (full source +
