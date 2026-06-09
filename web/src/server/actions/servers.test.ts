@@ -32,7 +32,7 @@ vi.mock('next/cache', () => ({revalidatePath: vi.fn()}));
 
 import {prisma} from '@/lib/db/prisma';
 import {decryptSecret} from '@/lib/crypto/secret-box';
-import {createServerAction, deleteServerAction, refreshServerStatusAction} from './servers';
+import {createServerAction, deleteServerAction, refreshServerStatusAction, refreshVisibleStatusesAction} from './servers';
 
 const KEY = 'a'.repeat(64);
 const cleanupServerIds: string[] = [];
@@ -98,6 +98,17 @@ describe('refreshServerStatusAction', () => {
     const st = await prisma.serverStatus.findUniqueOrThrow({where: {serverId: s.id}});
     expect(st.online).toBe(true);
     expect(st.cpu).toBe(7);
+  });
+});
+
+describe('refreshVisibleStatusesAction', () => {
+  it('counts refreshed and failed separately when given one valid and one bogus id', async () => {
+    const s = await prisma.server.create({data: {name: `Vis-${uniq()}`, baseUrl: 'http://h:1', apiSkEnc: 'enc'}});
+    cleanupServerIds.push(s.id);
+    const res = await refreshVisibleStatusesAction([s.id, 'nonexistent-id-xyz']);
+    expect(res.ok).toBe(true);
+    expect(res.refreshed).toBe(1);
+    expect(res.failed).toBe(1);
   });
 });
 
