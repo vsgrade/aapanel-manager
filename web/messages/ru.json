@@ -59,6 +59,20 @@
     "soon": "Скоро",
     "notFound": "Сервер не найден"
   },
+  "overview": {
+    "cpu": "CPU",
+    "memory": "Память",
+    "disk": "Диск",
+    "cores": "Ядра",
+    "load1": "Нагр. 1м",
+    "load5": "Нагр. 5м",
+    "load15": "Нагр. 15м",
+    "netUp": "Исходящий",
+    "netDown": "Входящий",
+    "offline": "Сервер недоступен",
+    "retry": "Повторить",
+    "lastUpdated": "Обновлено"
+  },
   "projects": {
     "title": "Проекты Node.js",
     "refresh": "Обновить",

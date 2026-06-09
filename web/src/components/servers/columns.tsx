@@ -1,4 +1,6 @@
 'use client';
+import Link from 'next/link';
+import type {Route} from 'next';
 import type {ColumnDef} from '@tanstack/react-table';
 import type {ServerRow} from '@/lib/servers/query';
 import {StatusBadge} from './status-badge';
@@ -6,7 +8,12 @@ import {StatusBadge} from './status-badge';
 /** `t` is passed in from the table so headers are translated without a hook here. */
 export function buildColumns(t: (key: string) => string): ColumnDef<ServerRow>[] {
   return [
-    {accessorKey: 'name', header: t('name'), enableSorting: true, enableHiding: false, size: 200},
+    {accessorKey: 'name', header: t('name'), enableSorting: true, enableHiding: false, size: 200,
+      cell: ({row}) => (
+        <Link href={`/servers/${row.original.id}` as Route} className="font-medium text-primary hover:underline">
+          {row.original.name}
+        </Link>
+      )},
     {accessorKey: 'tag', header: t('tag'), enableSorting: true, size: 120,
       cell: ({row}) => row.original.tag ?? '—'},
     {id: 'status', header: t('status'), enableSorting: false, size: 110,

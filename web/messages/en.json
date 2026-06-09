@@ -59,6 +59,20 @@
     "soon": "Soon",
     "notFound": "Server not found"
   },
+  "overview": {
+    "cpu": "CPU",
+    "memory": "Memory",
+    "disk": "Disk",
+    "cores": "Cores",
+    "load1": "Load 1m",
+    "load5": "Load 5m",
+    "load15": "Load 15m",
+    "netUp": "Upload",
+    "netDown": "Download",
+    "offline": "Server is offline",
+    "retry": "Retry",
+    "lastUpdated": "Last updated"
+  },
   "projects": {
     "title": "Node.js Projects",
     "refresh": "Refresh",
