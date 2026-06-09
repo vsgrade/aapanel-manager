@@ -520,7 +520,7 @@ describe('AaPanelClient.listDatabases', () => {
       addtime: '2026-01-27 12:48:22',
     });
     // password must be stripped
-    expect((row as Record<string, unknown>).password).toBeUndefined();
+    expect((row as unknown as Record<string, unknown>).password).toBeUndefined();
   });
 
   it('MySQL body contains table=databases; PG body contains data=', async () => {
