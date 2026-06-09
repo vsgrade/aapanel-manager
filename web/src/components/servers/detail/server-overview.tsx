@@ -70,6 +70,7 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
     inFlightRef.current = true;
     try {
       const next = await getServerMetricsAction(id);
+      if (!mountedRef.current) return;
       setResult(next);
       setLastUpdated(new Date());
     } finally {

@@ -95,7 +95,14 @@ export async function projectControlAction(
   try {
     const creds = await loadServerCreds(serverId);
     const client = createClientForServer(creds);
-    await client.batchOperation([projectName], op);
+    const result = await client.batchOperation([projectName], op);
+    // The panel can return HTTP 200 while the per-project operation failed
+    // (msg_list[i].status === false). Surface that as a failure, not success.
+    const item = result.msg_list?.[0];
+    if (item && item.status === false) {
+      await recordAudit({userId, serverId, action: `project.${op}`, target: projectName, result: 'error'});
+      return {ok: false, message: item.msg || op};
+    }
     await recordAudit({
       userId,
       serverId,

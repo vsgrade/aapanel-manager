@@ -153,6 +153,19 @@ describe('projectControlAction', () => {
     expect(mockCreateClient.mock.calls.length).toBe(callsBefore);
     expect(after).toBe(before); // no new success audit row
   });
+
+  it('surfaces a per-project failure (msg_list status false) as ok:false', async () => {
+    guard.user.role = 'admin';
+    vi.mocked(createClientForServer).mockImplementationOnce(
+      () =>
+        ({
+          batchOperation: async () => ({msg: 'fail', msg_list: [{name: 'app', status: false, msg: 'boom'}]}),
+        }) as never,
+    );
+    const res = await projectControlAction(serverId, 'app', 'restart');
+    expect(res.ok).toBe(false);
+    expect(res.message).toContain('boom');
+  });
 });
 
 describe('getProjectLogsAction', () => {
