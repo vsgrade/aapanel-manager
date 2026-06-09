@@ -23,7 +23,7 @@ describe('listServers', () => {
     const {rows, total} = await listServers(serverListParamsSchema.parse({q: 'q-alpha'}));
     expect(total).toBe(1);
     expect(rows[0].name).toBe('q-alpha');
-    expect((rows[0] as Record<string, unknown>).apiSkEnc).toBeUndefined();
+    expect((rows[0] as unknown as Record<string, unknown>).apiSkEnc).toBeUndefined();
   });
 
   it('filters by tag and paginates', async () => {
