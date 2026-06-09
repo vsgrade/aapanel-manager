@@ -13,5 +13,10 @@ export default defineConfig({
     // still exercise the real logic while the guard is preserved in production.
     alias: {'server-only': path.resolve(__dirname, 'src/__mocks__/server-only.ts')},
   },
-  test: {environment: 'node', include: ['src/**/*.test.ts'], globals: true},
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts'],
+    globals: true,
+    setupFiles: ['src/test-setup.ts'],
+  },
 });
