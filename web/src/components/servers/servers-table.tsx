@@ -14,11 +14,13 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import {toast} from 'sonner';
-import {ArrowDown, ArrowUp, ChevronsUpDown, RefreshCw, SlidersHorizontal} from 'lucide-react';
+import {ArrowDown, ArrowUp, ChevronsUpDown, Pencil, RefreshCw, SlidersHorizontal, Trash2} from 'lucide-react';
 import type {ServerRow} from '@/lib/servers/query';
 import type {ServerListParams} from '@/lib/validation/server';
 import {refreshServerStatusAction} from '@/server/actions/servers';
 import {buildColumns} from './columns';
+import {ServerFormDialog} from './server-form-dialog';
+import {DeleteServerDialog} from './delete-server-dialog';
 import {Button} from '@/components/ui/button';
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
 import {
@@ -39,7 +41,7 @@ export interface ServersTableProps {
   isAdmin: boolean;
 }
 
-export function ServersTable({data, total, params}: ServersTableProps) {
+export function ServersTable({data, total, params, isAdmin}: ServersTableProps) {
   const t = useTranslations('servers');
   const router = useRouter();
   const pathname = usePathname();
@@ -115,9 +117,9 @@ export function ServersTable({data, total, params}: ServersTableProps) {
       enableSorting: false,
       enableHiding: false,
       enableResizing: false,
-      size: 56,
+      size: 120,
       cell: ({row}) => (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-1">
           <Button
             variant="ghost"
             size="sm"
@@ -127,6 +129,27 @@ export function ServersTable({data, total, params}: ServersTableProps) {
           >
             <RefreshCw className="size-4" />
           </Button>
+          {isAdmin ? (
+            <>
+              <ServerFormDialog
+                mode="edit"
+                server={row.original}
+                trigger={
+                  <Button variant="ghost" size="sm" aria-label={t('edit')}>
+                    <Pencil className="size-4" />
+                  </Button>
+                }
+              />
+              <DeleteServerDialog
+                server={{id: row.original.id, name: row.original.name}}
+                trigger={
+                  <Button variant="ghost" size="sm" aria-label={t('delete')}>
+                    <Trash2 className="size-4" />
+                  </Button>
+                }
+              />
+            </>
+          ) : null}
         </div>
       ),
     },
