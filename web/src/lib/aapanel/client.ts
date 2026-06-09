@@ -1,26 +1,23 @@
+import {Agent} from 'undici';
 import {sign} from './signing';
 import {AaPanelError, type AaPanelClientConfig, type SystemTotal} from './types';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
- * Lazily creates a single reusable undici Agent with TLS verification disabled.
- * Dynamic import avoids a hard dependency at module load time.
- * Returns undefined when undici is unavailable (e.g. in test environments
- * where fetch is fully mocked and the dispatcher is irrelevant).
+ * Reusable undici Agent that accepts self-signed panel certificates.
+ *
+ * `undici` is a declared dependency (web/package.json): it powers Node's global
+ * fetch and exposes the `dispatcher` option — the only per-request way to skip
+ * TLS verification (aaPanel ships self-signed certs by default). The agent is
+ * created lazily and reused, and ONLY when an insecure request is actually made;
+ * secure servers never construct it. There is intentionally no silent fallback:
+ * a broken environment fails loudly rather than quietly sending verified-TLS
+ * requests that the panel's self-signed cert would then reject.
  */
-let insecureDispatcher: unknown;
-async function getInsecureDispatcher(): Promise<unknown> {
-  if (!insecureDispatcher) {
-    try {
-      // undici ships with Node.js 18+; no package.json entry needed.
-      const {Agent} = await import('undici');
-      insecureDispatcher = new Agent({connect: {rejectUnauthorized: false}});
-    } catch {
-      // undici unavailable — dispatcher will be omitted; only affects real TLS
-      return undefined;
-    }
-  }
+let insecureDispatcher: Agent | undefined;
+function getInsecureDispatcher(): Agent {
+  insecureDispatcher ??= new Agent({connect: {rejectUnauthorized: false}});
   return insecureDispatcher;
 }
 
@@ -45,20 +42,15 @@ export class AaPanelClient {
 
     let res: Response;
     try {
-      const init: Record<string, unknown> = {
+      // Node's global fetch accepts an undici `dispatcher` not present in the
+      // standard RequestInit type; we type it explicitly and cast at the call.
+      const init: RequestInit & {dispatcher?: Agent} = {
         method: 'POST',
         headers: {'content-type': 'application/x-www-form-urlencoded'},
         body: body.toString(),
         signal: AbortSignal.timeout(this.timeoutMs),
       };
-      if (this.insecureTLS) {
-        // Node.js fetch (undici-based) accepts a `dispatcher` option not in the
-        // standard RequestInit type — cast via a plain object then back.
-        const dispatcher = await getInsecureDispatcher();
-        if (dispatcher !== undefined) {
-          init.dispatcher = dispatcher;
-        }
-      }
+      if (this.insecureTLS) init.dispatcher = getInsecureDispatcher();
       res = await fetch(url, init as RequestInit);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
