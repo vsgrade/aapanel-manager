@@ -94,14 +94,17 @@ describe('getServerMetricsAction', () => {
 
   it('returns ok:false when getMetrics throws', async () => {
     const mockCreateClient = vi.mocked(createClientForServer);
-    mockCreateClient.mockImplementationOnce(() => ({
-      getMetrics: async () => {
-        throw new Error('panel down');
-      },
-      listProjects: async () => [],
-      batchOperation: async () => ({}),
-      getProjectLogs: async () => '',
-    }));
+    mockCreateClient.mockImplementationOnce(
+      () =>
+        ({
+          getMetrics: async () => {
+            throw new Error('panel down');
+          },
+          listProjects: async () => [],
+          batchOperation: async () => ({}),
+          getProjectLogs: async () => '',
+        }) as never,
+    );
     const res = await getServerMetricsAction(serverId);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.message).toContain('panel down');
