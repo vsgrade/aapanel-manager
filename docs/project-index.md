@@ -55,7 +55,12 @@ Next.js 16 (App Router, RSC, Server Actions) + TS strict + Prisma v7/Postgres + 
 | `web/src/lib/validation/server.ts` | zod-схемы: create/update/test + устойчивые list-параметры (из URL) |
 | `web/src/lib/servers/query.ts` | `listServers` — чтение из кеша (server-side фильтр/сортировка/пагинация; `apiSkEnc` не выбирается) |
 | `web/src/lib/audit.ts`, `lib/utils/concurrency.ts` | Best-effort аудит; `mapLimit` (ограниченная параллельность) |
-| `web/src/server/actions/servers.ts` | Server Actions: CRUD + testConnection + refresh (одной/видимых); проверка ролей + аудит |
+| `web/src/server/actions/servers.ts` | Server Actions: CRUD + testConnection + refresh (одной/видимых); проверка ролей + аудит (поллинг делегирован в `lib/servers/status`) |
+| `web/src/lib/servers/status.ts` | Общий сервис статуса: опрос → апсерт кеша → `pg_notify` (исп. экшенами и воркером) |
+| `web/src/lib/realtime/{channel,notify,server-events}.ts` | Канал событий + парсер; `NOTIFY` через Prisma; singleton `LISTEN` + раздача через EventEmitter |
+| `web/src/app/api/sse/servers/route.ts` | SSE-поток статусов (с auth, heartbeat, очистка при отключении) |
+| `web/src/components/servers/servers-live.tsx` | Клиент: EventSource → `router.refresh()` с дебаунсом |
+| `web/src/worker/{index,poll-cycle}.ts` | Фоновый воркер: цикл опроса всех серверов (`pnpm worker`, отдельный процесс) |
 | `web/src/components/servers/*` | Таблица (TanStack v8), колонки, статус-бейдж, тулбар, диалоги add/edit/delete |
 | `web/src/app/(app)/servers/{page,loading,error}.tsx` | Маршрут `/servers` (RSC) |
 | `web/messages/{ru,en}.json` | Строки UI (namespace `servers`) |
