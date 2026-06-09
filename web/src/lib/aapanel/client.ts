@@ -1,4 +1,4 @@
-import {Agent} from 'undici';
+import {Agent, fetch as undiciFetch} from 'undici';
 import {sign} from './signing';
 import {
   AaPanelError,
@@ -59,21 +59,24 @@ export class AaPanelClient {
 
     let res: Response;
     try {
-      // Node's global fetch accepts an undici `dispatcher` not present in the
-      // standard RequestInit type; we type it explicitly and cast at the call.
-      const init: RequestInit & {dispatcher?: Agent} = {
+      // undici's own fetch is used (not Node's global fetch) so that the undici
+      // Agent can be passed as `dispatcher` — Node's global fetch rejects an
+      // npm-undici Agent with UND_ERR_INVALID_ARG, making insecureTLS a no-op.
+      const init: Parameters<typeof undiciFetch>[1] = {
         method: 'POST',
         headers: {'content-type': 'application/x-www-form-urlencoded'},
         body: body.toString(),
         signal: AbortSignal.timeout(this.timeoutMs),
       };
       if (this.insecureTLS) init.dispatcher = getInsecureDispatcher();
-      res = await fetch(url, init as RequestInit);
+      res = (await undiciFetch(url, init)) as unknown as Response;
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         throw new AaPanelError('timeout', `Request to ${path} timed out`);
       }
-      throw new AaPanelError('network', err instanceof Error ? err.message : 'Network error');
+      const causeCode = (err as {cause?: {code?: string}}).cause?.code;
+      const message = err instanceof Error ? err.message : 'Network error';
+      throw new AaPanelError('network', `${message}${causeCode ? ` (${causeCode})` : ''}`);
     }
 
     if (res.status === 401 || res.status === 403) {
@@ -247,21 +250,27 @@ export class AaPanelClient {
   /**
    * Realtime network speeds and system load average.
    *
-   * Field mapping sourced from docs/en/system-monitoring.md §GetNetWork:
-   *   up   → upload speed, KB/s
-   *   down → download speed, KB/s
-   *   load → array [1-min, 5-min, 15-min] load averages
+   * Field mapping sourced from docs/en/system-monitoring.md §GetNetWork (real panel):
+   *   up   → upload speed, KB/s (top-level number)
+   *   down → download speed, KB/s (top-level number)
+   *   load → OBJECT {one, five, fifteen, max, limit, safe} — NOT an array
    *
    * Returns {up: null, down: null, load: null} if the request throws — callers
    * treat all network/load fields as best-effort.
    */
   private async getNetwork(): Promise<{up: number | null; down: number | null; load: {one: number; five: number; fifteen: number} | null}> {
-    const raw = await this.request<{up?: unknown; down?: unknown; load?: unknown}>('GetNetWork');
+    const raw = await this.request<{
+      up?: unknown;
+      down?: unknown;
+      load?: {one?: unknown; five?: unknown; fifteen?: unknown} | null;
+    }>('GetNetWork');
     const up = typeof raw.up === 'number' ? raw.up : null;
     const down = typeof raw.down === 'number' ? raw.down : null;
     let load: {one: number; five: number; fifteen: number} | null = null;
-    if (Array.isArray(raw.load) && raw.load.length >= 3) {
-      const [one, five, fifteen] = raw.load as unknown[];
+    if (raw.load !== null && typeof raw.load === 'object' && !Array.isArray(raw.load)) {
+      const one = raw.load.one;
+      const five = raw.load.five;
+      const fifteen = raw.load.fifteen;
       if (typeof one === 'number' && typeof five === 'number' && typeof fifteen === 'number') {
         load = {one, five, fifteen};
       }
@@ -276,7 +285,7 @@ export class AaPanelClient {
    *   GetSystemTotal: cpuRealUsed (cpu %), cpuNum (cores),
    *                   memTotal/memRealUsed (MB)
    *   GetDiskInfo:    size[3] → use% string e.g. "40%"
-   *   GetNetWork:     up/down (KB/s), load ([one, five, fifteen])
+   *   GetNetWork:     up/down (top-level KB/s), load (object {one,five,fifteen})
    *
    * GetSystemTotal is REQUIRED — if it throws the caller treats the server as offline.
    * GetDiskInfo and GetNetWork are best-effort: failures produce null sub-metrics only.

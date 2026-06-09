@@ -2,171 +2,226 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {AaPanelClient} from './client';
 import {AaPanelError, type NodeProject} from './types';
 
+// ---------------------------------------------------------------------------
+// Mock undici so tests never touch the network.
+// Keep the real Agent (spread `actual`) so `new Agent(...)` works in client.ts.
+// Replace only `fetch` with a vi.fn() that tests control per-call.
+// ---------------------------------------------------------------------------
+vi.mock('undici', async (orig) => {
+  const actual = await orig<typeof import('undici')>();
+  return {...actual, fetch: vi.fn()};
+});
+
+// Import the mocked fetch AFTER vi.mock is hoisted.
+import {fetch as undiciFetch} from 'undici';
+const fetchMock = vi.mocked(undiciFetch);
+
 const cfg = {baseUrl: 'https://panel.example:8888', apiSk: 'k', insecureTLS: true, timeoutMs: 1000};
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {status, headers: {'content-type': 'application/json'}});
 }
 
+// ---------------------------------------------------------------------------
+// Real aaPanel fixture data (confirmed against live panel — see bug report).
+// ---------------------------------------------------------------------------
+
+/** Real GetSystemTotal response (no `load` field). */
+const FIXTURE_SYSTEM_TOTAL = {
+  memTotal: 3819,
+  memFree: 374,
+  memBuffers: 282,
+  memCached: 2700,
+  memRealUsed: 463,
+  cpuNum: 2,
+  cpuRealUsed: 0.5,
+  time: '3 Day(s)',
+  system: 'Ubuntu 24.04.3 LTS x86_64(Py3.12.3)',
+  version: '8.0.1',
+};
+
+/** Real GetDiskInfo response — size[3] = "24%". */
+const FIXTURE_DISK_INFO = [
+  {
+    filesystem: '/dev/mapper/ubuntu--vg-ubuntu--lv',
+    type: 'ext4',
+    path: '/',
+    size: ['128G', '30G', '94G', '24%'],
+    inodes: ['8519680', '564220', '7955460', '7%'],
+  },
+];
+
+/**
+ * Real GetNetWork response — `load` is an OBJECT {one,five,fifteen,...},
+ * NOT an array; up/down are top-level KB/s numbers.
+ */
+const FIXTURE_NETWORK = {
+  up: 0.03,
+  down: 0.59,
+  upTotal: 50025119,
+  downTotal: 457790673,
+  load: {one: 0.117, five: 0.078, fifteen: 0.013, max: 4, limit: 4, safe: 3.0},
+  cpu: [0.5, 0.0],
+  mem: {memTotal: 3819, memFree: 374, memRealUsed: 463, memCached: 2700},
+  disk: [],
+};
+
+// ---------------------------------------------------------------------------
+// AaPanelClient.getSystemTotal
+// ---------------------------------------------------------------------------
+
 describe('AaPanelClient.getSystemTotal', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => fetchMock.mockReset());
   afterEach(() => vi.restoreAllMocks());
 
-  it('maps a healthy response to normalized metrics', async () => {
-    // Real aaPanel GetSystemTotal fields (confirmed via docs/en/system-monitoring.md + examples/javascript/aapanel-client.ts):
-    // cpuRealUsed = CPU %, memTotal/memRealUsed = MB; mem% = memRealUsed/memTotal*100
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      jsonResponse({cpuRealUsed: 12.5, memTotal: 1000, memRealUsed: 250}),
-    );
+  it('maps a real fixture to normalized metrics', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(FIXTURE_SYSTEM_TOTAL) as never);
     const client = new AaPanelClient(cfg);
     const out = await client.getSystemTotal();
+
     expect(out.online).toBe(true);
-    expect(out.cpu).toBeCloseTo(12.5);
-    expect(out.mem).toBeCloseTo(25); // 250/1000 * 100
+    expect(out.cpu).toBeCloseTo(0.5);
+    // memPercent = 463/3819 * 100 ≈ 12.1
+    expect(out.mem).toBeCloseTo((463 / 3819) * 100);
+
+    // Verify signed body was sent
     const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
     expect(body).toContain('request_time=');
     expect(body).toContain('request_token=');
   });
 
   it('classifies HTTP 401 as an auth error', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({msg: 'bad key'}, 401));
+    fetchMock.mockResolvedValueOnce(jsonResponse({msg: 'bad key'}, 401) as never);
     const client = new AaPanelClient(cfg);
     await expect(client.getSystemTotal()).rejects.toMatchObject({kind: 'auth'} satisfies Partial<AaPanelError>);
   });
 
-  it('classifies a thrown fetch as a network error', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('connect ECONNREFUSED'));
+  it('classifies a thrown TypeError as a network error', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('connect ECONNREFUSED') as never);
     const client = new AaPanelClient(cfg);
     await expect(client.getSystemTotal()).rejects.toMatchObject({kind: 'network'});
   });
 
+  it('includes the cause code in the network error message', async () => {
+    const err = Object.assign(new TypeError('fetch failed'), {
+      cause: {code: 'UND_ERR_INVALID_ARG'},
+    });
+    fetchMock.mockRejectedValueOnce(err as never);
+    const client = new AaPanelClient(cfg);
+    await expect(client.getSystemTotal()).rejects.toMatchObject({
+      kind: 'network',
+      message: expect.stringContaining('UND_ERR_INVALID_ARG'),
+    });
+  });
+
+  it('includes UNABLE_TO_VERIFY_LEAF_SIGNATURE in the message when relevant', async () => {
+    const err = Object.assign(new TypeError('fetch failed'), {
+      cause: {code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'},
+    });
+    fetchMock.mockRejectedValueOnce(err as never);
+    const client = new AaPanelClient(cfg);
+    await expect(client.getSystemTotal()).rejects.toMatchObject({
+      kind: 'network',
+      message: 'fetch failed (UNABLE_TO_VERIFY_LEAF_SIGNATURE)',
+    });
+  });
+
   it('classifies an AbortError as a timeout', async () => {
     const err = Object.assign(new Error('aborted'), {name: 'AbortError'});
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(err);
+    fetchMock.mockRejectedValueOnce(err as never);
     const client = new AaPanelClient(cfg);
     await expect(client.getSystemTotal()).rejects.toMatchObject({kind: 'timeout'});
   });
 });
 
+// ---------------------------------------------------------------------------
+// AaPanelClient.getDiskInfo
+// ---------------------------------------------------------------------------
+
 describe('AaPanelClient.getDiskInfo', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => fetchMock.mockReset());
   afterEach(() => vi.restoreAllMocks());
 
-  it('returns the root mount usage percent', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify([
-        {path: '/', size: ['100G', '40G', '60G', '40%']},
-        {path: '/boot', size: ['1G', '0.5G', '0.5G', '50%']},
-      ]), {status: 200, headers: {'content-type': 'application/json'}}),
-    );
+  it('returns the root mount usage percent from real fixture', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(FIXTURE_DISK_INFO) as never);
     const client = new AaPanelClient({baseUrl: 'https://h:8888', apiSk: 'k', insecureTLS: true});
-    expect(await client.getDiskInfo()).toBeCloseTo(40);
+    expect(await client.getDiskInfo()).toBeCloseTo(24);
   });
 
   it('returns null when no parsable mount is present', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify([]), {status: 200, headers: {'content-type': 'application/json'}}),
-    );
+    fetchMock.mockResolvedValueOnce(jsonResponse([]) as never);
     const client = new AaPanelClient({baseUrl: 'https://h:8888', apiSk: 'k', insecureTLS: true});
     expect(await client.getDiskInfo()).toBeNull();
   });
 });
 
+// ---------------------------------------------------------------------------
+// AaPanelClient.collectStatus
+// ---------------------------------------------------------------------------
+
 describe('AaPanelClient.collectStatus', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => fetchMock.mockReset());
   afterEach(() => vi.restoreAllMocks());
 
   it('combines system + disk; disk failure does not fail the snapshot', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({cpuRealUsed: 10, memTotal: 100, memRealUsed: 30}), {status: 200, headers: {'content-type': 'application/json'}}),
-    );
-    fetchMock.mockRejectedValueOnce(new TypeError('disk fetch failed'));
+    fetchMock.mockResolvedValueOnce(jsonResponse(FIXTURE_SYSTEM_TOTAL) as never);
+    fetchMock.mockRejectedValueOnce(new TypeError('disk fetch failed') as never);
+
     const client = new AaPanelClient({baseUrl: 'https://h:8888', apiSk: 'k', insecureTLS: true});
     const snap = await client.collectStatus();
-    expect(snap).toMatchObject({online: true, cpu: 10, disk: null});
-    expect(snap.mem).toBeCloseTo(30);
+
+    expect(snap.online).toBe(true);
+    expect(snap.cpu).toBeCloseTo(0.5);
+    expect(snap.mem).toBeCloseTo((463 / 3819) * 100);
+    expect(snap.disk).toBeNull();
   });
 });
 
 // ---------------------------------------------------------------------------
-// GetNetWork response shape (docs/en/system-monitoring.md §GetNetWork):
-//   { up: number, down: number, load: [one, five, fifteen], ... }
-//   up/down are current speeds in KB/s; load is the system load average array.
-// GetSystemTotal response shape (docs/en/system-monitoring.md §GetSystemTotal):
-//   { cpuRealUsed, cpuNum, memTotal, memRealUsed, ... }  — no load field here.
+// AaPanelClient.getMetrics — uses REAL fixture shapes
+// Call order: 1=GetSystemTotal, 2=GetDiskInfo, 3=GetNetWork
 // ---------------------------------------------------------------------------
 
 describe('AaPanelClient.getMetrics', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => fetchMock.mockReset());
   afterEach(() => vi.restoreAllMocks());
 
-  it('maps a full happy-path response to ServerMetrics', async () => {
-    // Call order: 1=GetSystemTotal, 2=GetDiskInfo, 3=GetNetWork
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        cpuRealUsed: 5.9,
-        cpuNum: 6,
-        memTotal: 5782,
-        memRealUsed: 1125,
-      }),
-    );
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse([
-        {path: '/', size: ['97G', '29G', '64G', '40%']},
-      ]),
-    );
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        up: 128,
-        down: 256,
-        load: [0.5, 0.8, 1.2],
-      }),
-    );
+  it('maps a full happy-path response to ServerMetrics using real fixtures', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(FIXTURE_SYSTEM_TOTAL) as never);
+    fetchMock.mockResolvedValueOnce(jsonResponse(FIXTURE_DISK_INFO) as never);
+    fetchMock.mockResolvedValueOnce(jsonResponse(FIXTURE_NETWORK) as never);
 
     const client = new AaPanelClient({baseUrl: 'https://h:8888', apiSk: 'k', insecureTLS: true});
     const metrics = await client.getMetrics();
 
-    expect(metrics.cpuPercent).toBeCloseTo(5.9);
-    expect(metrics.cores).toBe(6);
-    expect(metrics.memUsedMb).toBe(1125);
-    expect(metrics.memTotalMb).toBe(5782);
-    expect(metrics.memPercent).toBeCloseTo((1125 / 5782) * 100);
-    expect(metrics.diskPercent).toBeCloseTo(40);
-    expect(metrics.netUpKbps).toBe(128);
-    expect(metrics.netDownKbps).toBe(256);
-    expect(metrics.load).toEqual({one: 0.5, five: 0.8, fifteen: 1.2});
+    expect(metrics.cpuPercent).toBeCloseTo(0.5);
+    expect(metrics.cores).toBe(2);
+    expect(metrics.memTotalMb).toBe(3819);
+    expect(metrics.memUsedMb).toBe(463);
+    expect(metrics.memPercent).toBeCloseTo((463 / 3819) * 100); // ≈ 12.1
+    expect(metrics.diskPercent).toBeCloseTo(24);
+    // load is an object from GetNetWork — NOT an array
+    expect(metrics.load).toEqual({one: 0.117, five: 0.078, fifteen: 0.013});
+    // up/down are top-level KB/s numbers
+    expect(metrics.netUpKbps).toBeCloseTo(0.03);
+    expect(metrics.netDownKbps).toBeCloseTo(0.59);
   });
 
   it('resolves with null network fields when GetNetWork rejects (best-effort)', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        cpuRealUsed: 10,
-        cpuNum: 4,
-        memTotal: 1000,
-        memRealUsed: 400,
-      }),
-    );
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse([{path: '/', size: ['50G', '10G', '40G', '20%']}]),
-    );
-    fetchMock.mockRejectedValueOnce(new TypeError('network fetch failed'));
+    fetchMock.mockResolvedValueOnce(jsonResponse(FIXTURE_SYSTEM_TOTAL) as never);
+    fetchMock.mockResolvedValueOnce(jsonResponse(FIXTURE_DISK_INFO) as never);
+    fetchMock.mockRejectedValueOnce(new TypeError('network fetch failed') as never);
 
     const client = new AaPanelClient({baseUrl: 'https://h:8888', apiSk: 'k', insecureTLS: true});
     const metrics = await client.getMetrics();
 
-    // CPU and mem must still resolve correctly
-    expect(metrics.cpuPercent).toBeCloseTo(10);
-    expect(metrics.memPercent).toBeCloseTo(40);
+    expect(metrics.cpuPercent).toBeCloseTo(0.5);
+    expect(metrics.memPercent).toBeCloseTo((463 / 3819) * 100);
+    expect(metrics.diskPercent).toBeCloseTo(24);
     // Network becomes null on failure
     expect(metrics.netUpKbps).toBeNull();
     expect(metrics.netDownKbps).toBeNull();
-    // Load also becomes null when GetNetWork fails
     expect(metrics.load).toBeNull();
-    // Disk still works
-    expect(metrics.diskPercent).toBeCloseTo(20);
   });
 });
 
@@ -251,13 +306,11 @@ const projectListResponse = {
 };
 
 describe('AaPanelClient.listProjects', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => fetchMock.mockReset());
   afterEach(() => vi.restoreAllMocks());
 
   it('returns a NodeProject[] with mapped name, status, port, path, cpu, mem', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      jsonResponse(projectListResponse),
-    );
+    fetchMock.mockResolvedValueOnce(jsonResponse(projectListResponse) as never);
     const client = new AaPanelClient(cfg);
     const projects: NodeProject[] = await client.listProjects();
 
@@ -295,7 +348,7 @@ describe('AaPanelClient.listProjects', () => {
   });
 
   it('status "running" when run=true, "stopped" when run=false', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(projectListResponse));
+    fetchMock.mockResolvedValueOnce(jsonResponse(projectListResponse) as never);
     const client = new AaPanelClient(cfg);
     const projects = await client.listProjects();
     expect(projects[0].status).toBe('running');
@@ -304,18 +357,18 @@ describe('AaPanelClient.listProjects', () => {
 });
 
 describe('AaPanelClient.batchOperation', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => fetchMock.mockReset());
   afterEach(() => vi.restoreAllMocks());
 
   it('POSTs a flat body with project_names JSON array and operation_type', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    fetchMock.mockResolvedValueOnce(
       jsonResponse({
         status: 0,
         message: {
           msg: 'Successfully 1 items.Failed on 0 projects.',
           msg_list: [{name: 'myapp', status: true, msg: 'Started successfully'}],
         },
-      }),
+      }) as never,
     );
     const client = new AaPanelClient(cfg);
     await client.batchOperation(['myapp'], 'start');
@@ -334,8 +387,11 @@ describe('AaPanelClient.batchOperation', () => {
   });
 
   it('encodes multiple project names correctly', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      jsonResponse({status: 0, message: {msg: 'Successfully 2 items.Failed on 0 projects.', msg_list: []}}),
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {msg: 'Successfully 2 items.Failed on 0 projects.', msg_list: []},
+      }) as never,
     );
     const client = new AaPanelClient(cfg);
     await client.batchOperation(['app1', 'app2'], 'stop');
@@ -347,11 +403,11 @@ describe('AaPanelClient.batchOperation', () => {
 });
 
 describe('AaPanelClient.getProjectInfo', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => fetchMock.mockReset());
   afterEach(() => vi.restoreAllMocks());
 
   it('returns a NodeProject for a single project', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    fetchMock.mockResolvedValueOnce(
       jsonResponse({
         status: 0,
         message: {
@@ -375,7 +431,7 @@ describe('AaPanelClient.getProjectInfo', () => {
           listen: [],
           listen_ok: true,
         },
-      }),
+      }) as never,
     );
     const client = new AaPanelClient(cfg);
     const project: NodeProject = await client.getProjectInfo('myapp');
@@ -389,15 +445,15 @@ describe('AaPanelClient.getProjectInfo', () => {
 });
 
 describe('AaPanelClient.getProjectLogs', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => fetchMock.mockReset());
   afterEach(() => vi.restoreAllMocks());
 
   it('returns the log text from message.result', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    fetchMock.mockResolvedValueOnce(
       jsonResponse({
         status: 0,
         message: {result: 'PM2 log output here\nline2'},
-      }),
+      }) as never,
     );
     const client = new AaPanelClient(cfg);
     const log = await client.getProjectLogs('myapp');
