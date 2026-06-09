@@ -1,5 +1,16 @@
 export type AaPanelErrorKind = 'network' | 'timeout' | 'auth' | 'panel_error';
 
+export type ProjectOperation = 'start' | 'stop' | 'restart';
+
+export interface NodeProject {
+  name: string;
+  status: 'running' | 'stopped' | 'unknown';
+  port: number | null;
+  path: string | null;
+  cpu: number | null;
+  mem: number | null; // MB
+}
+
 export class AaPanelError extends Error {
   constructor(
     public readonly kind: AaPanelErrorKind,

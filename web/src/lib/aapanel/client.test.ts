@@ -1,6 +1,6 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {AaPanelClient} from './client';
-import {AaPanelError} from './types';
+import {AaPanelError, type NodeProject} from './types';
 
 const cfg = {baseUrl: 'https://panel.example:8888', apiSk: 'k', insecureTLS: true, timeoutMs: 1000};
 
@@ -167,5 +167,247 @@ describe('AaPanelClient.getMetrics', () => {
     expect(metrics.load).toBeNull();
     // Disk still works
     expect(metrics.diskPercent).toBeCloseTo(20);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Node.js project methods
+// Real response shapes documented in docs/en/nodejs-projects.md (live v8 panel).
+// ---------------------------------------------------------------------------
+
+// Fixture: two projects (one running, one stopped) matching the real panel shape.
+const projectListResponse = {
+  status: 0,
+  message: {
+    page: "<div><span class='Pcurrent'>1</span><span class='Pcount'>Total 2</span></div>",
+    shift: '0',
+    row: '10',
+    data: [
+      {
+        id: 4,
+        name: 'myapp',
+        path: '/www/node-projects/myapp/',
+        status: '1',
+        ps: 'myapp 3003',
+        addtime: '2026-02-03 03:22:24',
+        project_type: 'Node',
+        project_config: {
+          project_name: 'myapp',
+          project_cwd: '/www/node-projects/myapp/',
+          project_script: 'prod:start',
+          bind_extranet: 1,
+          domains: ['myapp.example.com:80'],
+          is_power_on: 0,
+          run_user: 'www',
+          max_memory_limit: 4096,
+          nodejs_version: 'v24.13.0',
+          port: 3003,
+          log_path: '/www/wwwlogs/nodejs',
+        },
+        load_info: {
+          '1162208': {
+            name: 'MainThread',
+            pid: 1162208,
+            status: 'Sleeping',
+            user: 'www',
+            memory_used: 208945152,
+            cpu_percent: 0.09,
+            threads: 18,
+            exe: 'node server.js',
+          },
+        },
+        run: true,
+        listen: [3003],
+        listen_ok: true,
+      },
+      {
+        id: 5,
+        name: 'stoppedapp',
+        path: '/www/node-projects/stoppedapp/',
+        status: '0',
+        ps: 'stoppedapp 3004',
+        addtime: '2026-03-01 10:00:00',
+        project_type: 'Node',
+        project_config: {
+          project_name: 'stoppedapp',
+          project_cwd: '/www/node-projects/stoppedapp/',
+          project_script: 'start',
+          bind_extranet: 0,
+          domains: [],
+          is_power_on: 0,
+          run_user: 'www',
+          max_memory_limit: 2048,
+          nodejs_version: 'v24.13.0',
+          port: 3004,
+          log_path: '/www/wwwlogs/nodejs',
+        },
+        load_info: {},
+        run: false,
+        listen: [],
+        listen_ok: false,
+      },
+    ],
+  },
+};
+
+describe('AaPanelClient.listProjects', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns a NodeProject[] with mapped name, status, port, path, cpu, mem', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(projectListResponse),
+    );
+    const client = new AaPanelClient(cfg);
+    const projects: NodeProject[] = await client.listProjects();
+
+    // Correct count
+    expect(projects).toHaveLength(2);
+
+    // Running project
+    const running = projects[0];
+    expect(running.name).toBe('myapp');
+    expect(running.status).toBe('running');
+    expect(running.port).toBe(3003);
+    expect(running.path).toBe('/www/node-projects/myapp/');
+    // cpu_percent from load_info (sum across processes): 0.09
+    expect(running.cpu).toBeCloseTo(0.09);
+    // memory_used bytes → MB: 208945152 / 1024 / 1024 ≈ 199.25
+    expect(running.mem).toBeCloseTo(208945152 / 1024 / 1024);
+
+    // Stopped project: load_info is empty → cpu/mem null
+    const stopped = projects[1];
+    expect(stopped.name).toBe('stoppedapp');
+    expect(stopped.status).toBe('stopped');
+    expect(stopped.port).toBe(3004);
+    expect(stopped.cpu).toBeNull();
+    expect(stopped.mem).toBeNull();
+
+    // URL must contain the Node endpoint path
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/v2/project/nodejs/get_project_list');
+
+    // Body must use the data= wrapper
+    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
+    expect(body).toContain('data=');
+    expect(body).toContain('request_time=');
+    expect(body).toContain('request_token=');
+  });
+
+  it('status "running" when run=true, "stopped" when run=false', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(projectListResponse));
+    const client = new AaPanelClient(cfg);
+    const projects = await client.listProjects();
+    expect(projects[0].status).toBe('running');
+    expect(projects[1].status).toBe('stopped');
+  });
+});
+
+describe('AaPanelClient.batchOperation', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('POSTs a flat body with project_names JSON array and operation_type', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        status: 0,
+        message: {
+          msg: 'Successfully 1 items.Failed on 0 projects.',
+          msg_list: [{name: 'myapp', status: true, msg: 'Started successfully'}],
+        },
+      }),
+    );
+    const client = new AaPanelClient(cfg);
+    await client.batchOperation(['myapp'], 'start');
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/v2/project/nodejs/batch_operation_project');
+
+    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
+    // Must contain project_names= with the JSON array (URL-encoded)
+    expect(body).toContain('project_names=');
+    expect(decodeURIComponent(body)).toContain('["myapp"]');
+    // Must contain operation_type=start
+    expect(body).toContain('operation_type=start');
+    // Must NOT use the data= wrapper (flat body)
+    expect(body).not.toContain('data=');
+  });
+
+  it('encodes multiple project names correctly', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({status: 0, message: {msg: 'Successfully 2 items.Failed on 0 projects.', msg_list: []}}),
+    );
+    const client = new AaPanelClient(cfg);
+    await client.batchOperation(['app1', 'app2'], 'stop');
+
+    const body = decodeURIComponent(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body).toContain('["app1","app2"]');
+    expect(body).toContain('operation_type=stop');
+  });
+});
+
+describe('AaPanelClient.getProjectInfo', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns a NodeProject for a single project', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        status: 0,
+        message: {
+          id: 3,
+          name: 'myapp',
+          path: '/www/node-projects/myapp/',
+          project_type: 'Node',
+          project_config: {
+            project_name: 'myapp',
+            project_cwd: '/www/node-projects/myapp/',
+            project_script: 'start',
+            port: 3002,
+            run_user: 'www',
+            nodejs_version: 'v24.13.0',
+            is_power_on: 1,
+            domains: ['myapp.example.com:80'],
+            max_memory_limit: 4096,
+          },
+          load_info: {},
+          run: false,
+          listen: [],
+          listen_ok: true,
+        },
+      }),
+    );
+    const client = new AaPanelClient(cfg);
+    const project: NodeProject = await client.getProjectInfo('myapp');
+    expect(project.name).toBe('myapp');
+    expect(project.status).toBe('stopped');
+    expect(project.port).toBe(3002);
+    expect(project.path).toBe('/www/node-projects/myapp/');
+    expect(project.cpu).toBeNull();
+    expect(project.mem).toBeNull();
+  });
+});
+
+describe('AaPanelClient.getProjectLogs', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns the log text from message.result', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        status: 0,
+        message: {result: 'PM2 log output here\nline2'},
+      }),
+    );
+    const client = new AaPanelClient(cfg);
+    const log = await client.getProjectLogs('myapp');
+    expect(typeof log).toBe('string');
+    expect(log).toContain('PM2 log output here');
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/v2/project/nodejs/get_project_log');
+
+    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
+    expect(body).toContain('data=');
   });
 });

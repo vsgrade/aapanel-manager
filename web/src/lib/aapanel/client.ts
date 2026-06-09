@@ -1,6 +1,14 @@
 import {Agent} from 'undici';
 import {sign} from './signing';
-import {AaPanelError, type AaPanelClientConfig, type SystemTotal, type ServerSnapshot, type ServerMetrics} from './types';
+import {
+  AaPanelError,
+  type AaPanelClientConfig,
+  type SystemTotal,
+  type ServerSnapshot,
+  type ServerMetrics,
+  type NodeProject,
+  type ProjectOperation,
+} from './types';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
@@ -36,9 +44,18 @@ export class AaPanelClient {
 
   /** POST an api_sk-signed form request to /system?action=<action>. */
   private async request<T>(action: string, extra: Record<string, string> = {}): Promise<T> {
+    return this.post<T>(`system?action=${encodeURIComponent(action)}`, extra);
+  }
+
+  /**
+   * Generic signed POST to an arbitrary panel path (after baseUrl).
+   * Signs the request with api_sk and sends application/x-www-form-urlencoded.
+   * All Node.js project endpoints use this; /system endpoints delegate here via request().
+   */
+  private async post<T>(path: string, fields: Record<string, string> = {}): Promise<T> {
     const auth = sign(this.apiSk, Math.floor(Date.now() / 1000));
-    const body = new URLSearchParams({...auth, ...extra});
-    const url = `${this.baseUrl}/system?action=${encodeURIComponent(action)}`;
+    const body = new URLSearchParams({...auth, ...fields});
+    const url = `${this.baseUrl}/${path}`;
 
     let res: Response;
     try {
@@ -54,7 +71,7 @@ export class AaPanelClient {
       res = await fetch(url, init as RequestInit);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        throw new AaPanelError('timeout', `Request to ${action} timed out`);
+        throw new AaPanelError('timeout', `Request to ${path} timed out`);
       }
       throw new AaPanelError('network', err instanceof Error ? err.message : 'Network error');
     }
@@ -71,6 +88,104 @@ export class AaPanelClient {
       throw new AaPanelError('panel_error', 'Panel returned a non-JSON response', res.status);
     }
   }
+
+  // ── Node.js project methods ──────────────────────────────────────────────
+
+  /**
+   * List Node.js projects with pagination, status, and CPU/RAM per project.
+   *
+   * Field mapping sourced from docs/en/nodejs-projects.md §get_project_list:
+   *   run                              → true=running, false=stopped
+   *   name                             → project name
+   *   path                             → project directory
+   *   project_config.port              → port
+   *   load_info.<pid>.cpu_percent      → CPU usage % (summed across processes)
+   *   load_info.<pid>.memory_used      → bytes → converted to MB
+   *   load_info is empty {}            → project is stopped; cpu/mem = null
+   */
+  async listProjects(params: {p?: number; limit?: number; search?: string; re_order?: string} = {}): Promise<NodeProject[]> {
+    const data = JSON.stringify({
+      p: params.p ?? 1,
+      limit: params.limit ?? 1000,
+      search: params.search ?? '',
+      re_order: params.re_order ?? '',
+    });
+    const raw = await this.post<{
+      status: number;
+      message: {
+        data: Array<{
+          name: string;
+          path: string;
+          run: boolean;
+          project_config?: {port?: number};
+          load_info?: Record<string, {cpu_percent?: number; memory_used?: number}>;
+        }>;
+      };
+    }>('v2/project/nodejs/get_project_list', {data});
+
+    return raw.message.data.map((p) => mapProject(p));
+  }
+
+  /**
+   * Info about a single Node.js project.
+   *
+   * Field mapping sourced from docs/en/nodejs-projects.md §get_project_info.
+   * Same shape as a list item; response is message (single object, no data[] wrapper).
+   */
+  async getProjectInfo(name: string): Promise<NodeProject> {
+    const data = JSON.stringify({project_name: name});
+    const raw = await this.post<{
+      status: number;
+      message: {
+        name: string;
+        path: string;
+        run: boolean;
+        project_config?: {port?: number};
+        load_info?: Record<string, {cpu_percent?: number; memory_used?: number}>;
+      };
+    }>('v2/project/nodejs/get_project_info', {data});
+
+    return mapProject(raw.message);
+  }
+
+  /**
+   * Start, stop, or restart one or more Node.js projects.
+   *
+   * Field mapping sourced from docs/en/nodejs-projects.md §batch_operation_project.
+   * FLAT body (no data= wrapper): project_names=<json-array> + operation_type.
+   */
+  async batchOperation(
+    names: string[],
+    op: ProjectOperation,
+  ): Promise<{msg: string; msg_list: Array<{name: string; status: boolean; msg: string}>}> {
+    const raw = await this.post<{
+      status: number;
+      message: {msg: string; msg_list: Array<{name: string; status: boolean; msg: string}>};
+    }>('v2/project/nodejs/batch_operation_project', {
+      project_names: JSON.stringify(names),
+      operation_type: op,
+    });
+    return raw.message;
+  }
+
+  /**
+   * Retrieve PM2/build log for a Node.js project.
+   *
+   * Field mapping sourced from docs/en/nodejs-projects.md §Logs (§10):
+   *   POST /v2/project/nodejs/get_project_log
+   *   Body: data={"project_name":"<name>"}
+   *   Response: { status: 0, message: { result: "<log text>" } }
+   */
+  async getProjectLogs(name: string): Promise<string> {
+    const data = JSON.stringify({project_name: name});
+    const raw = await this.post<{
+      status: number;
+      message: {result: string};
+    }>('v2/project/nodejs/get_project_log', {data});
+    return raw.message.result;
+  }
+
+  // ── System monitoring ─────────────────────────────────────────────────────
 
   /**
    * Liveness + basic metrics.
@@ -209,4 +324,50 @@ export class AaPanelClient {
 
     return {cpuPercent, cores, load, memUsedMb, memTotalMb, memPercent, diskPercent, netUpKbps, netDownKbps};
   }
+}
+
+// ── Node.js project helpers ───────────────────────────────────────────────
+
+/**
+ * Raw project shape shared by get_project_list items and get_project_info message.
+ * Docs: docs/en/nodejs-projects.md §1 and §2.
+ */
+interface RawNodeProject {
+  name: string;
+  path: string;
+  /** true = running, false = stopped (docs/en/nodejs-projects.md §1 Key fields) */
+  run: boolean;
+  project_config?: {port?: number};
+  /** Keyed by PID string; empty object when project is stopped. */
+  load_info?: Record<string, {cpu_percent?: number; memory_used?: number}>;
+}
+
+/**
+ * Maps a raw panel project record to a normalized NodeProject.
+ *
+ * status: branch on `run` (boolean), NOT on localized text.
+ * cpu: sum of cpu_percent across all load_info entries (null when load_info is empty).
+ * mem: sum of memory_used bytes across all entries, converted to MB (null when empty).
+ */
+function mapProject(p: RawNodeProject): NodeProject {
+  const status = p.run === true ? 'running' : p.run === false ? 'stopped' : 'unknown';
+  const port = p.project_config?.port ?? null;
+  const path = p.path ?? null;
+
+  const loadEntries = p.load_info ? Object.values(p.load_info) : [];
+  let cpu: number | null = null;
+  let mem: number | null = null;
+
+  if (loadEntries.length > 0) {
+    let totalCpu = 0;
+    let totalMemBytes = 0;
+    for (const entry of loadEntries) {
+      if (typeof entry.cpu_percent === 'number') totalCpu += entry.cpu_percent;
+      if (typeof entry.memory_used === 'number') totalMemBytes += entry.memory_used;
+    }
+    cpu = totalCpu;
+    mem = totalMemBytes / (1024 * 1024); // bytes → MB
+  }
+
+  return {name: p.name, status, port, path, cpu, mem};
 }
