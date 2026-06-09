@@ -19,7 +19,13 @@ vi.mock('@/lib/auth/guards', async (orig) => {
 // Mock the panel client so no network is hit.
 vi.mock('@/lib/aapanel', async (orig) => {
   const actual = await orig<typeof import('@/lib/aapanel')>();
-  return {...actual, createClientForServer: vi.fn(() => ({getSystemTotal: async () => ({online: true, cpu: 7, mem: 8})}))};
+  return {
+    ...actual,
+    createClientForServer: vi.fn(() => ({
+      collectStatus: async () => ({online: true, cpu: 7, mem: 8, disk: 9}),
+      getSystemTotal: async () => ({online: true, cpu: 7, mem: 8}),
+    })),
+  };
 });
 // Next cache no-op
 vi.mock('next/cache', () => ({revalidatePath: vi.fn()}));

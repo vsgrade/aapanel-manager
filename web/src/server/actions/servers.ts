@@ -10,6 +10,7 @@ import {mapLimit} from '@/lib/utils/concurrency';
 import {prisma} from '@/lib/db/prisma';
 import {log} from '@/log';
 import {serverCreateSchema, serverUpdateSchema, testConnectionSchema} from '@/lib/validation/server';
+import {refreshServerStatus} from '@/lib/servers/status';
 
 export type ActionState =
   | {ok: true; message?: string}
@@ -138,29 +139,6 @@ export async function testConnectionAction(formData: FormData): Promise<SimpleRe
   }
 }
 
-async function pollAndUpsert(serverId: string): Promise<void> {
-  const server = await prisma.server.findUniqueOrThrow({
-    where: {id: serverId},
-    select: {baseUrl: true, apiSkEnc: true, insecureTLS: true},
-  });
-  try {
-    const total = await createClientForServer(server).getSystemTotal();
-    await prisma.serverStatus.upsert({
-      where: {serverId},
-      create: {serverId, online: true, cpu: total.cpu, mem: total.mem, error: null, lastCheckedAt: new Date()},
-      update: {online: true, cpu: total.cpu, mem: total.mem, error: null, lastCheckedAt: new Date()},
-    });
-  } catch (err) {
-    const message = describeError(err);
-    await prisma.serverStatus.upsert({
-      where: {serverId},
-      create: {serverId, online: false, error: message, lastCheckedAt: new Date()},
-      update: {online: false, error: message, lastCheckedAt: new Date()},
-    });
-    throw err;
-  }
-}
-
 /** Live-polls one server and writes its status to the cache. */
 export async function refreshServerStatusAction(serverId: string): Promise<SimpleResult> {
   let user: SessionUser;
@@ -171,10 +149,10 @@ export async function refreshServerStatusAction(serverId: string): Promise<Simpl
   }
   if (!serverId) return {ok: false, message: 'missing id'};
   try {
-    await pollAndUpsert(serverId);
-    await recordAudit({userId: user.id, serverId, action: 'server.refresh', result: 'ok'});
+    const r = await refreshServerStatus(serverId);
+    await recordAudit({userId: user.id, serverId, action: 'server.refresh', result: r.ok ? 'ok' : 'error'});
     revalidatePath('/servers');
-    return {ok: true, message: 'refreshed'};
+    return {ok: r.ok, message: r.ok ? 'refreshed' : (r.message ?? 'error')};
   } catch (err) {
     await recordAudit({userId: user.id, serverId, action: 'server.refresh', result: 'error'});
     revalidatePath('/servers');
@@ -192,8 +170,8 @@ export async function refreshVisibleStatusesAction(
     return {ok: false, refreshed: 0, failed: serverIds.length};
   }
   const ids = serverIds.filter((id) => typeof id === 'string' && id.length > 0).slice(0, 100);
-  const results = await mapLimit(ids, 8, (id) => pollAndUpsert(id));
-  const refreshed = results.filter((r) => r.ok).length;
+  const results = await mapLimit(ids, 8, (id) => refreshServerStatus(id));
+  const refreshed = results.filter((r) => r.ok && r.value.ok).length;
   revalidatePath('/servers');
   return {ok: true, refreshed, failed: results.length - refreshed};
 }
