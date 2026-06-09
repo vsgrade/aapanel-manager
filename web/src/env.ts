@@ -6,6 +6,7 @@ const EnvSchema = z.object({
   APP_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'must be 64 hex chars (32 bytes)'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(16),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
