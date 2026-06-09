@@ -30,6 +30,7 @@ import {createServerAction, deleteServerAction, refreshServerStatusAction} from 
 
 const KEY = 'a'.repeat(64);
 const cleanupServerIds: string[] = [];
+const cleanupAuditIds: string[] = [];
 let userId = '';
 const uniq = () => Math.random().toString(36).slice(2, 8);
 
@@ -43,6 +44,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  if (cleanupAuditIds.length) await prisma.auditLog.deleteMany({where: {id: {in: cleanupAuditIds}}});
   await prisma.server.deleteMany({where: {id: {in: cleanupServerIds}}});
   if (userId) await prisma.user.delete({where: {id: userId}}).catch(() => {});
 });
@@ -94,9 +96,14 @@ describe('refreshServerStatusAction', () => {
 });
 
 describe('deleteServerAction', () => {
-  it('deletes a server (cascades status)', async () => {
+  it('deletes a server (cascades status) and records the deletion in the audit log', async () => {
     const s = await prisma.server.create({data: {name: `Del-${uniq()}`, baseUrl: 'http://h:1', apiSkEnc: 'enc'}});
-    await deleteServerAction(fd({id: s.id}));
+    const res = await deleteServerAction(fd({id: s.id}));
+    expect(res.ok).toBe(true);
     expect(await prisma.server.findUnique({where: {id: s.id}})).toBeNull();
+    // The deletion MUST be audited even though the server FK is gone (id lives in target).
+    const audit = await prisma.auditLog.findFirst({where: {action: 'server.delete', target: {contains: s.id}}});
+    expect(audit).not.toBeNull();
+    if (audit) cleanupAuditIds.push(audit.id);
   });
 });

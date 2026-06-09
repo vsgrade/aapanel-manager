@@ -90,7 +90,15 @@ export async function deleteServerAction(formData: FormData): Promise<SimpleResu
   if (!id) return {ok: false, message: 'missing id'};
   try {
     const server = await prisma.server.delete({where: {id}}); // ServerStatus cascades
-    await recordAudit({userId: user.id, serverId: id, action: 'server.delete', target: server.name, result: 'ok'});
+    // Audit WITHOUT serverId: the row is already gone, so an FK reference would
+    // fail the insert (best-effort audit would then silently drop the delete
+    // record). Identity is preserved in `target` instead.
+    await recordAudit({
+      userId: user.id,
+      action: 'server.delete',
+      target: `${server.name} (${id})`,
+      result: 'ok',
+    });
     revalidatePath('/servers');
     return {ok: true, message: 'deleted'};
   } catch (err) {
