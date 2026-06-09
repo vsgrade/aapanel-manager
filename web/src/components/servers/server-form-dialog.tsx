@@ -1,5 +1,5 @@
 'use client';
-import {useActionState, useEffect, useState, useTransition} from 'react';
+import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {toast} from 'sonner';
 import type {ServerRow} from '@/lib/servers/query';
@@ -34,20 +34,34 @@ export interface ServerFormDialogProps {
 export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps) {
   const t = useTranslations('servers');
   const action = mode === 'create' ? createServerAction : updateServerAction;
-  const [state, formAction, pending] = useActionState(action, INITIAL);
   const [open, setOpen] = useState(false);
   const [insecure, setInsecure] = useState(server?.insecureTLS ?? true);
+  const [result, setResult] = useState<ActionState>(INITIAL);
+  const [pending, startSubmit] = useTransition();
   const [testing, startTest] = useTransition();
 
-  useEffect(() => {
-    if (state.ok) {
-      toast.success(t(state.message ?? 'saved'));
-      setOpen(false);
-    }
-  }, [state, t]);
+  // Call the action directly (no useActionState) so success handling lives in a
+  // transition callback, not an effect — avoids set-state-in-effect cascades.
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    startSubmit(async () => {
+      const res = await action(INITIAL, fd);
+      setResult(res);
+      if (res.ok) {
+        toast.success(t(res.message ?? 'saved'));
+        setOpen(false);
+      }
+    });
+  }
+
+  function onOpenChange(next: boolean) {
+    setOpen(next);
+    if (!next) setResult(INITIAL); // clear stale errors when the dialog closes
+  }
 
   const fieldErr = (name: string): string | undefined =>
-    !state.ok && state.fieldErrors ? state.fieldErrors[name]?.[0] : undefined;
+    !result.ok && result.fieldErrors ? result.fieldErrors[name]?.[0] : undefined;
 
   function runTest(form: HTMLFormElement | null) {
     if (!form) return;
@@ -60,20 +74,20 @@ export function ServerFormDialog({mode, server, trigger}: ServerFormDialogProps)
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger render={trigger} />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{mode === 'create' ? t('add') : t('edit')}</DialogTitle>
           <DialogDescription>{t('formHint')}</DialogDescription>
         </DialogHeader>
-        <form action={formAction} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-4">
           {mode === 'edit' && server ? <input type="hidden" name="id" value={server.id} /> : null}
           <input type="hidden" name="insecureTLS" value={insecure ? 'true' : 'false'} />
 
-          {!state.ok && state.error && state.error !== 'validation' ? (
+          {!result.ok && result.error && result.error !== 'validation' ? (
             <p className="text-sm text-destructive" role="alert">
-              {state.error}
+              {result.error}
             </p>
           ) : null}
 
