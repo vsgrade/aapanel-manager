@@ -65,7 +65,10 @@ Next.js 16 (App Router, RSC, Server Actions) + TS strict + Prisma v7/Postgres + 
 | `web/src/server/actions/projects.ts` | Server Actions страницы сервера: метрики, список проектов, контроль (start/stop/restart, admin+аудит), логи |
 | `web/src/lib/servers/detail.ts` | `getServerForDetail` (публичные поля сервера для шапки) |
 | `web/src/app/(app)/servers/[id]/` | Уровень 2: layout+меню разделов, Обзор (`page.tsx`, живые метрики), Проекты (`projects/page.tsx`) |
-| `web/src/components/servers/detail/*` | section-nav, server-overview (опрос ~4с), metric-bar, projects-table, project-logs-dialog |
+| `web/src/components/servers/detail/*` | section-nav, server-overview (опрос ~4с), metric-bar, projects-table, project-logs-dialog, databases-table, database-form/delete-dialog |
+| `web/src/server/actions/databases.ts` (+`lib/validation/database.ts`) | Раздел БД: список/создание/удаление (MySQL+PostgreSQL, admin+аудит, удаление с подтверждением имени) |
+| `web/src/lib/aapanel/client.ts` (DB-методы) | `listDatabases`/`createDatabase`/`deleteDatabase` — два движка (MySQL flat `/v2/data`,`/v2/database`; PG `/v2/database/pgsql/*` тело `data=JSON`); пароли БД вырезаются |
+| `web/src/app/(app)/servers/[id]/databases/` | Раздел «Базы данных» (RSC) |
 | `web/src/components/servers/*` | Таблица (TanStack v8), колонки, статус-бейдж, тулбар, диалоги add/edit/delete |
 | `web/src/app/(app)/servers/{page,loading,error}.tsx` | Маршрут `/servers` (RSC) |
 | `web/messages/{ru,en}.json` | Строки UI (namespace `servers`) |

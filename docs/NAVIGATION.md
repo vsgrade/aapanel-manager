@@ -26,7 +26,8 @@
 
 - Спека: [aapanel-manager-app-design](superpowers/specs/2026-06-08-aapanel-manager-app-design.md)
 - Планы: [Фаза 1 — фундамент](superpowers/plans/2026-06-08-phase-1-foundation.md) · [Фаза 2 — серверы](superpowers/plans/2026-06-09-phase-2-servers.md) · [Фаза 3 — живой дашборд](superpowers/plans/2026-06-09-phase-3-live-dashboard.md) · [Фаза 4 — Обзор+Проекты](superpowers/plans/2026-06-09-phase-4-overview-projects.md)
-- Страница сервера: `web/src/app/(app)/servers/[id]/` (Обзор+Проекты) · экшены `web/src/server/actions/projects.ts`
+- Страница сервера: `web/src/app/(app)/servers/[id]/` (Обзор+Проекты+Базы данных) · экшены `web/src/server/actions/{projects,databases}.ts`
+- Разделы (Фаза 5): [Базы данных](superpowers/plans/2026-06-09-phase-5a-databases.md) — `/servers/[id]/databases`
 - Маршрут серверов: `web/src/app/(app)/servers/page.tsx` · Server Actions: `web/src/server/actions/servers.ts` · клиент панели: `web/src/lib/aapanel/`
 - Live: воркер `web/src/worker/` · сервис статуса `web/src/lib/servers/status.ts` · realtime `web/src/lib/realtime/` · SSE `web/src/app/api/sse/servers/route.ts`
 
