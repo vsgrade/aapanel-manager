@@ -25,6 +25,7 @@
     "all": "All",
     "cpu": "CPU",
     "mem": "RAM",
+    "disk": "Disk",
     "lastChecked": "Checked",
     "never": "—",
     "columns": "Columns",

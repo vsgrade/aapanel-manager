@@ -25,6 +25,7 @@
     "all": "Все",
     "cpu": "CPU",
     "mem": "ОЗУ",
+    "disk": "Диск",
     "lastChecked": "Проверено",
     "never": "—",
     "columns": "Столбцы",

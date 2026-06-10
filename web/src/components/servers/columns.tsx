@@ -22,6 +22,8 @@ export function buildColumns(t: (key: string) => string): ColumnDef<ServerRow>[]
       cell: ({row}) => (row.original.cpu == null ? '—' : `${row.original.cpu.toFixed(1)}%`)},
     {accessorKey: 'mem', header: t('mem'), enableSorting: true, size: 90,
       cell: ({row}) => (row.original.mem == null ? '—' : `${Math.round(row.original.mem)}%`)},
+    {accessorKey: 'disk', header: t('disk'), enableSorting: true, size: 90,
+      cell: ({row}) => (row.original.disk == null ? '—' : `${Math.round(row.original.disk)}%`)},
     {accessorKey: 'baseUrl', header: t('baseUrl'), enableSorting: false, size: 240},
     {id: 'lastCheckedAt', accessorKey: 'lastCheckedAt', header: t('lastChecked'), enableSorting: true, size: 170,
       cell: ({row}) => (row.original.lastCheckedAt ? new Date(row.original.lastCheckedAt).toLocaleString() : t('never'))},

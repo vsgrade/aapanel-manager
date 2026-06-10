@@ -61,7 +61,7 @@ export const serverListParamsSchema = z.object({
   q: z.preprocess(first, z.string().trim().max(100).optional().catch(undefined)),
   status: z.preprocess(first, z.enum(['all', 'online', 'offline', 'unknown']).catch('all')),
   tag: z.preprocess(first, z.string().trim().max(50).optional().catch(undefined)),
-  sort: z.preprocess(first, z.enum(['name', 'tag', 'createdAt', 'lastCheckedAt', 'cpu', 'mem']).catch('name')),
+  sort: z.preprocess(first, z.enum(['name', 'tag', 'createdAt', 'lastCheckedAt', 'cpu', 'mem', 'disk']).catch('name')),
   dir: z.preprocess(first, z.enum(['asc', 'desc']).catch('asc')),
 });
 

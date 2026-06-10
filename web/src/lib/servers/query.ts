@@ -44,6 +44,7 @@ function buildOrderBy(p: ServerListParams): Prisma.ServerOrderByWithRelationInpu
   switch (p.sort) {
     case 'cpu': return {status: {cpu: p.dir}};
     case 'mem': return {status: {mem: p.dir}};
+    case 'disk': return {status: {disk: p.dir}};
     case 'lastCheckedAt': return {status: {lastCheckedAt: p.dir}};
     case 'tag': return {tag: p.dir};
     case 'createdAt': return {createdAt: p.dir};
