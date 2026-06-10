@@ -17,6 +17,7 @@ import {toast} from 'sonner';
 import {ArrowDown, ArrowUp, ChevronsUpDown, Pencil, RefreshCw, SlidersHorizontal, Trash2} from 'lucide-react';
 import type {ServerRow} from '@/lib/servers/query';
 import type {ServerListParams} from '@/lib/validation/server';
+import {cycleSort, type ServerSortField} from '@/lib/servers/sort';
 import {refreshServerStatusAction} from '@/server/actions/servers';
 import {buildColumns} from './columns';
 import {ServerFormDialog} from './server-form-dialog';
@@ -166,12 +167,6 @@ export function ServersTable({data, total, params, isAdmin}: ServersTableProps) 
     state: {sorting, pagination, columnVisibility, columnSizing},
     onColumnVisibilityChange: setColumnVisibility,
     onColumnSizingChange: setColumnSizing,
-    onSortingChange: (updater) => {
-      const next = typeof updater === 'function' ? updater(sorting) : updater;
-      const s = next[0];
-      if (!s) return;
-      pushParams({sort: s.id, dir: s.desc ? 'desc' : 'asc', page: 1});
-    },
     onPaginationChange: (updater) => {
       const next = typeof updater === 'function' ? updater(pagination) : updater;
       pushParams({page: next.pageIndex + 1, pageSize: next.pageSize});
@@ -220,7 +215,20 @@ export function ServersTable({data, total, params, isAdmin}: ServersTableProps) 
                       <button
                         type="button"
                         disabled={!canSort}
-                        onClick={header.column.getToggleSortingHandler()}
+                        // Two-state cycle (asc ⇄ desc). `canSort` guarantees the column id is a
+                        // sortable field (name/tag/cpu/mem/lastCheckedAt), all in ServerSortField.
+                        onClick={
+                          canSort
+                            ? () =>
+                                pushParams({
+                                  ...cycleSort(
+                                    {sort: params.sort, dir: params.dir},
+                                    header.column.id as ServerSortField,
+                                  ),
+                                  page: 1,
+                                })
+                            : undefined
+                        }
                         className={canSort ? 'flex items-center gap-1' : 'flex cursor-default items-center gap-1'}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}

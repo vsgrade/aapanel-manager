@@ -54,6 +54,7 @@ Next.js 16 (App Router, RSC, Server Actions) + TS strict + Prisma v7/Postgres + 
 | `web/src/lib/crypto/secret-box.ts`, `lib/config/secrets.ts` | AES-256-GCM шифрование `api_sk` + доступ к ключу |
 | `web/src/lib/validation/server.ts` | zod-схемы: create/update/test + устойчивые list-параметры (из URL) |
 | `web/src/lib/servers/query.ts` | `listServers` — чтение из кеша (server-side фильтр/сортировка/пагинация; `apiSkEnc` не выбирается) |
+| `web/src/lib/servers/sort.ts` | Чистая функция `cycleSort` — двухстатусный цикл сортировки таблицы серверов (asc ⇄ desc, без сброса в «без сортировки»); покрыта юнит-тестом |
 | `web/src/lib/audit.ts`, `lib/utils/concurrency.ts` | Best-effort аудит; `mapLimit` (ограниченная параллельность) |
 | `web/src/server/actions/servers.ts` | Server Actions: CRUD + testConnection + refresh (одной/видимых); проверка ролей + аудит (поллинг делегирован в `lib/servers/status`) |
 | `web/src/lib/servers/status.ts` | Общий сервис статуса: опрос → апсерт кеша → `pg_notify` (исп. экшенами и воркером) |
