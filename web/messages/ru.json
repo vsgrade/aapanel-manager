@@ -51,6 +51,8 @@
   },
   "detail": {
     "backToServers": "Серверы",
+    "switchServer": "Сменить сервер…",
+    "noServers": "Нет серверов",
     "overview": "Обзор",
     "projects": "Проекты",
     "databases": "Базы данных",

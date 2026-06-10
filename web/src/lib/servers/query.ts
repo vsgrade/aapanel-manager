@@ -81,3 +81,20 @@ export async function listServers(p: ServerListParams): Promise<ListServersResul
   }));
   return {rows, total};
 }
+
+export interface ServerOption {
+  id: string;
+  name: string;
+  tag: string | null;
+}
+
+/**
+ * Lightweight list of every server (id, name, tag) for the detail-page switcher.
+ * No secrets, no status — ordered by name; the client filters locally.
+ */
+export async function listServerOptions(): Promise<ServerOption[]> {
+  return prisma.server.findMany({
+    orderBy: {name: 'asc'},
+    select: {id: true, name: true, tag: true},
+  });
+}
