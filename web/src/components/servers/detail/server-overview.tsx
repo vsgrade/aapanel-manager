@@ -31,7 +31,7 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
   const t = useTranslations('overview');
 
   const [result, setResult] = useState<MetricsResult>(initial);
-  const [lastUpdated, setLastUpdated] = useState<Date>(() => new Date());
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Guard against overlapping fetches and post-unmount state updates.
   const inFlightRef = useRef(false);
@@ -39,6 +39,11 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
 
   useEffect(() => {
     mountedRef.current = true;
+    // Stamp "last updated" only after mount (client-only). Rendering a live clock
+    // during render would differ between SSR and hydration → hydration mismatch.
+    const stampTimer = setTimeout(() => {
+      if (mountedRef.current) setLastUpdated(new Date());
+    }, 0);
 
     const tick = async () => {
       // Skip when tab is hidden or a fetch is already running.
@@ -61,6 +66,7 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
 
     return () => {
       mountedRef.current = false;
+      clearTimeout(stampTimer);
       clearInterval(id_);
     };
   }, [id]);
@@ -89,7 +95,7 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
           {t('retry')}
         </Button>
         <p className="text-xs text-muted-foreground">
-          {t('lastUpdated')}: {lastUpdated.toLocaleTimeString()}
+          {t('lastUpdated')}: {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}
         </p>
       </div>
     );
@@ -152,7 +158,7 @@ export function ServerOverview({id, initial}: ServerOverviewProps) {
 
       {/* Last updated */}
       <p className="text-xs text-muted-foreground">
-        {t('lastUpdated')}: {lastUpdated.toLocaleTimeString()}
+        {t('lastUpdated')}: {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}
       </p>
     </div>
   );
