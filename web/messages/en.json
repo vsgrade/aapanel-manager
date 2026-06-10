@@ -2,6 +2,7 @@
   "app": {"title": "aaPanel Manager"},
   "auth": {"signIn": "Sign in", "email": "Email", "password": "Password", "invalid": "Invalid email or password"},
   "nav": {"servers": "Servers", "users": "Users", "signOut": "Sign out"},
+  "theme": {"label": "Theme", "light": "Light", "dim": "Dim", "dark": "Dark"},
   "servers": {
     "title": "Servers",
     "add": "Add server",

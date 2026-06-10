@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import {signOut} from '@/auth';
 import {Button} from '@/components/ui/button';
+import {ThemeToggle} from '@/components/theme-toggle';
 
 export async function AppShell({children}: {children: React.ReactNode}) {
   const t = await getTranslations('nav');
@@ -12,9 +13,12 @@ export async function AppShell({children}: {children: React.ReactNode}) {
           <Link href="/servers" className="font-semibold">aaPanel Manager</Link>
           <Link href="/servers" className="text-sm text-muted-foreground">{t('servers')}</Link>
         </nav>
-        <form action={async () => {'use server'; await signOut({redirectTo: '/login'});}}>
-          <Button variant="ghost" size="sm" type="submit">{t('signOut')}</Button>
-        </form>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <form action={async () => {'use server'; await signOut({redirectTo: '/login'});}}>
+            <Button variant="ghost" size="sm" type="submit">{t('signOut')}</Button>
+          </form>
+        </div>
       </header>
       <main className="p-4">{children}</main>
     </div>

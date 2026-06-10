@@ -72,7 +72,8 @@ Next.js 16 (App Router, RSC, Server Actions) + TS strict + Prisma v7/Postgres + 
 | `web/src/app/(app)/servers/[id]/databases/` | Раздел «Базы данных» (RSC) |
 | `web/src/components/servers/*` | Таблица (TanStack v8), колонки, статус-бейдж, тулбар, диалоги add/edit/delete |
 | `web/src/app/(app)/servers/{page,loading,error}.tsx` | Маршрут `/servers` (RSC) |
-| `web/messages/{ru,en}.json` | Строки UI (namespace `servers`) |
+| `web/src/components/{theme-provider,theme-toggle}.tsx` | next-themes провайдер + 3-позиционный переключатель тем (светлая/серая-dim/тёмная) в шапке; палитры в `globals.css` |
+| `web/messages/{ru,en}.json` | Строки UI (namespaces `servers`, `theme`, …) |
 
 **Безопасность:** `api_sk` шифруется в покое; расшифровка только в Server Actions/фабрике (`server-only`); в кеш-выборку и клиент секрет не попадает; мутации — только admin; все мутации в `AuditLog`.
 
