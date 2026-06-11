@@ -1,6 +1,6 @@
 'use client';
 
-import {useState, useTransition} from 'react';
+import {useCallback, useEffect, useRef, useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {toast} from 'sonner';
 import {FileText, Play, Square, RotateCcw, RefreshCw} from 'lucide-react';
@@ -31,15 +31,47 @@ const OP_TOAST_KEY: Record<ProjectOperation, 'started' | 'stopped_msg' | 'restar
   restart: 'restarted',
 };
 
+const PROJECTS_POLL_INTERVAL_MS = 12_000;
+
 export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
   const t = useTranslations('projects');
   const [result, setResult] = useState<ProjectsResult>(initial);
   const [pending, startTransition] = useTransition();
 
+  // Shared by manual refresh, post-operation refresh, and the background poll.
+  // A request token ensures only the latest fetch's result is applied.
+  const inFlightRef = useRef(false);
+  const reqIdRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  const load = useCallback(async () => {
+    const reqId = (reqIdRef.current += 1);
+    inFlightRef.current = true;
+    try {
+      const res = await listNodeProjectsAction(id);
+      if (mountedRef.current && reqId === reqIdRef.current) setResult(res);
+    } finally {
+      inFlightRef.current = false;
+    }
+  }, [id]);
+
+  // Light auto-refresh so status changes appear without a manual click; pauses
+  // when the tab is hidden and never starts a poll while a fetch is in flight.
+  useEffect(() => {
+    mountedRef.current = true;
+    const tick = () => {
+      if (document.visibilityState === 'visible' && !inFlightRef.current) void load();
+    };
+    const intervalId = setInterval(tick, PROJECTS_POLL_INTERVAL_MS);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(intervalId);
+    };
+  }, [load]);
+
   function refetch() {
     startTransition(async () => {
-      const res = await listNodeProjectsAction(id);
-      setResult(res);
+      await load();
     });
   }
 
@@ -48,8 +80,7 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
       const res = await projectControlAction(id, name, op);
       if (res.ok) {
         toast.success(t(OP_TOAST_KEY[op]));
-        const updated = await listNodeProjectsAction(id);
-        setResult(updated);
+        await load();
       } else {
         toast.error(res.message);
       }
