@@ -62,11 +62,11 @@ Next.js 16 (App Router, RSC, Server Actions) + TS strict + Prisma v7/Postgres + 
 | `web/src/app/api/sse/servers/route.ts` | SSE-поток статусов (с auth, heartbeat, очистка при отключении) |
 | `web/src/components/servers/servers-live.tsx` | Клиент: EventSource → `router.refresh()` с дебаунсом |
 | `web/src/worker/{index,poll-cycle}.ts` | Фоновый воркер: цикл опроса всех серверов (`pnpm worker`, отдельный процесс) |
-| `web/src/lib/aapanel/client.ts` (+types) | Доп. методы: `getMetrics` (Обзор) + Node-проекты `listProjects`/`getProjectInfo`/`batchOperation`/`getProjectLogs` (api_sk, путь `/v2/project/nodejs/*`) |
-| `web/src/server/actions/projects.ts` | Server Actions страницы сервера: метрики, список проектов, контроль (start/stop/restart, admin+аудит), логи |
+| `web/src/lib/aapanel/client.ts` (+types) | Доп. методы: `getMetrics` (Обзор) + Node-проекты: чтение `listProjects`/`getProjectInfo`/`getProjectConfig`/`getRunList`/`getNodeVersions`/`getCreateEnv`; контроль `batchOperation`; CRUD `createProject`/`modifyProject`/`deleteProject`; логи `getProjectLogs` (api_sk, путь `/v2/project/nodejs/*`) |
+| `web/src/server/actions/projects.ts` (+`lib/validation/project.ts`) | Server Actions страницы сервера: метрики, список проектов, контроль (start/stop/restart), логи; **CRUD проектов** — создание/изменение/удаление + загрузка данных форм (`getProjectEditData`/`getProjectCreateEnv`/`getRunList`); все мутации admin+аудит, удаление с подтверждением имени |
 | `web/src/lib/servers/detail.ts` | `getServerForDetail` (публичные поля сервера для шапки) |
 | `web/src/app/(app)/servers/[id]/` | Уровень 2: layout+меню разделов, Обзор (`page.tsx`, живые метрики), Проекты (`projects/page.tsx`) |
-| `web/src/components/servers/detail/*` | section-nav, server-overview (опрос ~4с), metric-bar, projects-table, project-logs-dialog, databases-table, database-form/delete-dialog, server-switcher (Base UI Combobox: поиск + переход между серверами в тот же раздел) |
+| `web/src/components/servers/detail/*` | section-nav, server-overview (опрос ~4с), metric-bar, projects-table (опрос ~12с) + project-form-dialog (создание/правка, выбор команды запуска из `package.json`) / project-logs-dialog / project-delete-dialog, databases-table, database-form/delete-dialog, server-switcher (Base UI Combobox: поиск + переход между серверами в тот же раздел) |
 | `web/src/server/actions/databases.ts` (+`lib/validation/database.ts`) | Раздел БД: список/создание/удаление (MySQL+PostgreSQL, admin+аудит, удаление с подтверждением имени) |
 | `web/src/lib/aapanel/client.ts` (DB-методы) | `listDatabases`/`createDatabase`/`deleteDatabase` — два движка (MySQL flat `/v2/data`,`/v2/database`; PG `/v2/database/pgsql/*` тело `data=JSON`); пароли БД вырезаются |
 | `web/src/app/(app)/servers/[id]/databases/` | Раздел «Базы данных» (RSC) |
