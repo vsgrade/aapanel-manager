@@ -37,6 +37,32 @@ vi.mock('@/lib/aapanel', async (orig) => {
       listProjects: async () => [{name: 'app', status: 'running', port: 3000, path: '/x', cpu: 1, mem: 50}],
       batchOperation: async () => ({}),
       getProjectLogs: async () => 'log line 1\nlog line 2',
+      getProjectConfig: async () => ({
+        name: 'app',
+        cwd: '/www/node-projects/app/',
+        script: 'start',
+        port: 3000,
+        runUser: 'www',
+        nodejsVersion: 'v24.13.0',
+        note: 'app',
+        powerOn: true,
+        maxMemoryLimit: 4096,
+        domains: [],
+      }),
+      getRunList: async () => [
+        {key: 'start', command: 'node server.js'},
+        {key: 'dev', command: 'next dev'},
+      ],
+      getNodeVersions: async () => ['v24.13.0'],
+      getCreateEnv: async () => ({
+        nodejsVersions: ['v24.13.0'],
+        packageManagers: ['pnpm', 'npm'],
+        userList: ['www', 'root'],
+        maximumMemory: 4096,
+      }),
+      createProject: async () => undefined,
+      modifyProject: async () => undefined,
+      deleteProject: async () => undefined,
     })),
   };
 });
@@ -51,7 +77,52 @@ import {
   listNodeProjectsAction,
   projectControlAction,
   getProjectLogsAction,
+  getProjectEditDataAction,
+  getProjectCreateEnvAction,
+  createProjectAction,
+  modifyProjectAction,
+  deleteProjectAction,
 } from './projects';
+
+/** Builds a valid create-project FormData. */
+function createForm(overrides: Record<string, string> = {}): FormData {
+  const fd = new FormData();
+  const base: Record<string, string> = {
+    cwd: '/www/node-projects/newapp',
+    name: 'newapp',
+    script: 'start',
+    port: '3005',
+    runUser: 'www',
+    nodejsVersion: 'v24.13.0',
+    note: 'newapp',
+    domains: '',
+    bindExtranet: 'false',
+    powerOn: 'true',
+    maxMemoryLimit: '4096',
+    env: '',
+    ...overrides,
+  };
+  for (const [k, v] of Object.entries(base)) fd.set(k, v);
+  return fd;
+}
+
+/** Builds a valid modify-project FormData. */
+function modifyForm(overrides: Record<string, string> = {}): FormData {
+  const fd = new FormData();
+  const base: Record<string, string> = {
+    cwd: '/www/node-projects/app/',
+    name: 'app',
+    script: 'prod:start',
+    port: '3000',
+    runUser: 'www',
+    nodejsVersion: 'v24.13.0',
+    note: 'app',
+    powerOn: 'false',
+    ...overrides,
+  };
+  for (const [k, v] of Object.entries(base)) fd.set(k, v);
+  return fd;
+}
 
 const cleanupServerIds: string[] = [];
 const cleanupAuditIds: string[] = [];
@@ -175,5 +246,124 @@ describe('getProjectLogsAction', () => {
     if (res.ok) {
       expect(res.logs).toBe('log line 1\nlog line 2');
     }
+  });
+});
+
+describe('getProjectEditDataAction', () => {
+  it('admin gets config, run scripts and node versions', async () => {
+    guard.user.role = 'admin';
+    const res = await getProjectEditDataAction(serverId, 'app');
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.config.name).toBe('app');
+      expect(res.runScripts).toHaveLength(2);
+      expect(res.nodeVersions).toEqual(['v24.13.0']);
+    }
+  });
+
+  it('viewer is forbidden', async () => {
+    guard.user.role = 'viewer';
+    const res = await getProjectEditDataAction(serverId, 'app');
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.message).toBe('forbidden');
+  });
+});
+
+describe('getProjectCreateEnvAction', () => {
+  it('admin gets pre_env metadata', async () => {
+    guard.user.role = 'admin';
+    const res = await getProjectCreateEnvAction(serverId);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.preEnv.packageManagers).toContain('pnpm');
+      expect(res.preEnv.userList).toContain('www');
+    }
+  });
+});
+
+describe('createProjectAction', () => {
+  it('admin creates a project and an audit row is written', async () => {
+    guard.user.role = 'admin';
+    const res = await createProjectAction(serverId, createForm());
+    expect(res.ok).toBe(true);
+
+    const audit = await prisma.auditLog.findFirst({
+      where: {action: 'project.create', target: 'newapp', result: 'ok'},
+    });
+    expect(audit).not.toBeNull();
+    if (audit) cleanupAuditIds.push(audit.id);
+  });
+
+  it('rejects invalid input with field errors and no panel contact', async () => {
+    guard.user.role = 'admin';
+    const res = await createProjectAction(serverId, createForm({port: '70000'}));
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error).toBe('validation');
+      expect(res.fieldErrors?.port).toBeTruthy();
+    }
+  });
+
+  it('viewer is blocked', async () => {
+    guard.user.role = 'viewer';
+    const res = await createProjectAction(serverId, createForm());
+    expect(res.ok).toBe(false);
+  });
+});
+
+describe('modifyProjectAction', () => {
+  it('admin modifies a project and an audit row is written', async () => {
+    guard.user.role = 'admin';
+    const res = await modifyProjectAction(serverId, modifyForm());
+    expect(res.ok).toBe(true);
+
+    const audit = await prisma.auditLog.findFirst({
+      where: {action: 'project.modify', target: 'app', result: 'ok'},
+    });
+    expect(audit).not.toBeNull();
+    if (audit) cleanupAuditIds.push(audit.id);
+  });
+
+  it('rejects a non-absolute cwd', async () => {
+    guard.user.role = 'admin';
+    const res = await modifyProjectAction(serverId, modifyForm({cwd: 'relative'}));
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toBe('validation');
+  });
+});
+
+describe('deleteProjectAction', () => {
+  it('deletes when the typed confirmation matches the name', async () => {
+    guard.user.role = 'admin';
+    const fd = new FormData();
+    fd.set('name', 'app');
+    fd.set('confirm', 'app');
+    const res = await deleteProjectAction(serverId, fd);
+    expect(res.ok).toBe(true);
+
+    const audit = await prisma.auditLog.findFirst({
+      where: {action: 'project.delete', target: 'app', result: 'ok'},
+    });
+    expect(audit).not.toBeNull();
+    if (audit) cleanupAuditIds.push(audit.id);
+  });
+
+  it('refuses when the confirmation does not match', async () => {
+    guard.user.role = 'admin';
+    const fd = new FormData();
+    fd.set('name', 'app');
+    fd.set('confirm', 'wrong');
+    const res = await deleteProjectAction(serverId, fd);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toBe('confirm');
+  });
+
+  it('viewer is blocked', async () => {
+    guard.user.role = 'viewer';
+    const fd = new FormData();
+    fd.set('name', 'app');
+    fd.set('confirm', 'app');
+    const res = await deleteProjectAction(serverId, fd);
+    expect(res.ok).toBe(false);
   });
 });
