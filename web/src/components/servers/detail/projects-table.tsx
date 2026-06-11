@@ -3,7 +3,7 @@
 import {useCallback, useEffect, useRef, useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {toast} from 'sonner';
-import {FileText, Play, Square, RotateCcw, RefreshCw} from 'lucide-react';
+import {FileText, Play, Square, RotateCcw, RefreshCw, Pencil, Trash2, PlusCircle} from 'lucide-react';
 import type {ProjectsResult} from '@/server/actions/projects';
 import {listNodeProjectsAction, projectControlAction} from '@/server/actions/projects';
 import type {ProjectOperation} from '@/lib/aapanel';
@@ -18,6 +18,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {ProjectLogsDialog} from '@/components/servers/detail/project-logs-dialog';
+import {ProjectFormDialog} from '@/components/servers/detail/project-form-dialog';
+import {ProjectDeleteDialog} from '@/components/servers/detail/project-delete-dialog';
 
 export interface ProjectsTableProps {
   id: string;
@@ -88,12 +90,27 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
   }
 
   const header = (
-    <div className="flex items-center justify-between mb-3">
+    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
       <h2 className="text-base font-semibold">{t('title')}</h2>
-      <Button variant="outline" size="sm" disabled={pending} onClick={refetch}>
-        <RefreshCw className="mr-1" />
-        {t('refresh')}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" disabled={pending} onClick={refetch}>
+          <RefreshCw className="mr-1" />
+          {t('refresh')}
+        </Button>
+        {isAdmin && (
+          <ProjectFormDialog
+            mode="create"
+            serverId={id}
+            onDone={() => void load()}
+            trigger={
+              <Button size="sm">
+                <PlusCircle className="mr-1 h-3.5 w-3.5" />
+                {t('add')}
+              </Button>
+            }
+          />
+        )}
+      </div>
     </div>
   );
 
@@ -203,6 +220,29 @@ export function ProjectsTable({id, initial, isAdmin}: ProjectsTableProps) {
                         <RotateCcw />
                         <span className="sr-only">{t('restart')}</span>
                       </Button>
+                      <ProjectFormDialog
+                        mode="edit"
+                        serverId={id}
+                        projectName={p.name}
+                        onDone={() => void load()}
+                        trigger={
+                          <Button variant="ghost" size="sm" title={t('edit')}>
+                            <Pencil />
+                            <span className="sr-only">{t('edit')}</span>
+                          </Button>
+                        }
+                      />
+                      <ProjectDeleteDialog
+                        serverId={id}
+                        projectName={p.name}
+                        onDone={() => void load()}
+                        trigger={
+                          <Button variant="ghost" size="sm" title={t('delete')}>
+                            <Trash2 />
+                            <span className="sr-only">{t('delete')}</span>
+                          </Button>
+                        }
+                      />
                     </>
                   )}
                 </div>
