@@ -667,3 +667,288 @@ describe('AaPanelClient.deleteDatabase', () => {
     expect(body).toContain('id=');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Node.js project CRUD methods
+// Real response shapes documented in docs/en/nodejs-projects.md (live v8 panel).
+// ---------------------------------------------------------------------------
+
+describe('AaPanelClient.getRunList', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('maps the scripts map to a RunScript[]; uses data= body and correct path', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {start: 'node server.js', dev: 'next dev -p 3002', build: 'next build'},
+      }) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    const scripts = await client.getRunList('/www/node-projects/myapp/');
+
+    expect(scripts).toEqual([
+      {key: 'start', command: 'node server.js'},
+      {key: 'dev', command: 'next dev -p 3002'},
+      {key: 'build', command: 'next build'},
+    ]);
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/v2/project/nodejs/get_run_list');
+    const body = decodeURIComponent(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body).toContain('project_cwd');
+  });
+
+  it('throws AaPanelError with the panel error_msg when the directory is missing', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: -1,
+        message: {status_code: -1, error_msg: 'Project directory does not exist!', data: 'x'},
+      }) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    await expect(client.getRunList('/nope')).rejects.toMatchObject({
+      kind: 'panel_error',
+      message: expect.stringContaining('Project directory does not exist'),
+    } satisfies Partial<AaPanelError>);
+  });
+});
+
+describe('AaPanelClient.getNodeVersions', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns the version array', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: 0, message: ['v22.22.0', 'v24.13.0']}) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    expect(await client.getNodeVersions()).toEqual(['v22.22.0', 'v24.13.0']);
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/v2/project/nodejs/get_nodejs_version');
+  });
+
+  it('throws when the message is not an array', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: -1, message: 'err'}) as never);
+    const client = new AaPanelClient(cfg);
+    await expect(client.getNodeVersions()).rejects.toMatchObject({kind: 'panel_error'});
+  });
+});
+
+describe('AaPanelClient.getCreateEnv', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('maps pre_env to normalized ProjectPreEnv; uses the mod path', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {
+          nodejs_versions: ['v24.13.0'],
+          package_managers: ['pnpm', 'yarn', 'npm'],
+          user_list: ['www', 'root'],
+          maximum_memory: 3819,
+        },
+      }) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    const env = await client.getCreateEnv();
+    expect(env).toEqual({
+      nodejsVersions: ['v24.13.0'],
+      packageManagers: ['pnpm', 'yarn', 'npm'],
+      userList: ['www', 'root'],
+      maximumMemory: 3819,
+    });
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/v2/mod/nodejs/com/pre_env');
+  });
+});
+
+describe('AaPanelClient.getProjectConfig', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('extracts edit-form fields from project_config', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {
+          id: 3,
+          name: 'myapp',
+          path: '/www/node-projects/myapp/',
+          ps: 'myapp 3002',
+          project_config: {
+            project_name: 'myapp',
+            project_cwd: '/www/node-projects/myapp/',
+            project_script: 'start',
+            port: 3002,
+            run_user: 'www',
+            nodejs_version: 'v24.13.0',
+            is_power_on: 1,
+            domains: ['myapp.example.com:80'],
+            max_memory_limit: 4096,
+          },
+          load_info: {},
+          run: false,
+        },
+      }) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    const config = await client.getProjectConfig('myapp');
+    expect(config).toEqual({
+      name: 'myapp',
+      cwd: '/www/node-projects/myapp/',
+      script: 'start',
+      port: 3002,
+      runUser: 'www',
+      nodejsVersion: 'v24.13.0',
+      note: 'myapp 3002',
+      powerOn: true,
+      maxMemoryLimit: 4096,
+      domains: ['myapp.example.com:80'],
+    });
+  });
+});
+
+describe('AaPanelClient.modifyProject', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  const input = {
+    cwd: '/www/node-projects/myapp/',
+    name: 'myapp',
+    script: 'prod:start',
+    port: 3003,
+    runUser: 'www',
+    nodejsVersion: 'v24.13.0',
+    note: 'myapp 3003',
+    powerOn: false,
+  };
+
+  it('resolves on success; uses data= body and the modify path', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {status_code: 1, error_msg: '', data: 'Modify the project successfully'},
+      }) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    await expect(client.modifyProject(input)).resolves.toBeUndefined();
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/v2/project/nodejs/modify_project');
+    const body = decodeURIComponent(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body).toContain('project_script');
+    expect(body).toContain('prod:start');
+  });
+
+  it('throws when inner status_code is negative', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {status_code: -1, error_msg: 'Port already in use', data: ''},
+      }) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    await expect(client.modifyProject(input)).rejects.toMatchObject({
+      kind: 'panel_error',
+      message: expect.stringContaining('Port already in use'),
+    } satisfies Partial<AaPanelError>);
+  });
+
+  it('throws when top-level status is non-zero', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({status: -1, message: 'bad'}) as never);
+    const client = new AaPanelClient(cfg);
+    await expect(client.modifyProject(input)).rejects.toMatchObject({kind: 'panel_error'});
+  });
+});
+
+describe('AaPanelClient.createProject', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  const input = {
+    cwd: '/www/node-projects/myapp',
+    name: 'myapp',
+    script: 'release',
+    port: 3001,
+    runUser: 'www',
+    nodejsVersion: 'v24.13.0',
+    note: 'myapp',
+    domains: ['myapp.example.com:80'],
+    bindExtranet: true,
+    powerOn: true,
+    maxMemoryLimit: 4096,
+    env: '',
+  };
+
+  it('resolves on success; uses data= body and the create path', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {status_code: 1, error_msg: '', data: 'Created'},
+      }) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    await expect(client.createProject(input)).resolves.toBeUndefined();
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/v2/project/nodejs/create_project');
+    const body = decodeURIComponent(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body).toContain('bind_extranet');
+    expect(body).toContain('max_memory_limit');
+  });
+
+  it('throws AaPanelError when the inner status_code is negative', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {status_code: -1, error_msg: 'Name already exists', data: ''},
+      }) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    await expect(client.createProject(input)).rejects.toMatchObject({
+      kind: 'panel_error',
+      message: expect.stringContaining('Name already exists'),
+    } satisfies Partial<AaPanelError>);
+  });
+});
+
+describe('AaPanelClient.deleteProject', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('sends operation_type=delete and resolves when status is true', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {
+          msg: 'Successfully 1 items.Failed on 0 projects.',
+          msg_list: [{name: 'myapp', status: true, msg: 'Operation successful.'}],
+        },
+      }) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    await expect(client.deleteProject('myapp')).resolves.toBeUndefined();
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/v2/project/nodejs/batch_operation_project');
+    const body = decodeURIComponent(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body).toContain('operation_type=delete');
+    expect(body).toContain('["myapp"]');
+  });
+
+  it('throws when the per-project status is false', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {msg: 'Failed', msg_list: [{name: 'myapp', status: false, msg: 'cannot delete'}]},
+      }) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    await expect(client.deleteProject('myapp')).rejects.toMatchObject({
+      kind: 'panel_error',
+      message: expect.stringContaining('cannot delete'),
+    } satisfies Partial<AaPanelError>);
+  });
+});

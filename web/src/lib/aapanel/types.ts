@@ -11,6 +11,77 @@ export interface NodeProject {
   mem: number | null; // MB
 }
 
+/**
+ * One run command from a project's `package.json` `scripts` section.
+ * Source: docs/en/nodejs-projects.md §get_run_list (`{key: command}` map).
+ */
+export interface RunScript {
+  key: string; // script key, e.g. "start", "prod:start"
+  command: string; // resolved command, e.g. "node server.js"
+}
+
+/**
+ * Metadata for the create-project form.
+ * Source: docs/en/nodejs-projects.md §pre_env.
+ */
+export interface ProjectPreEnv {
+  nodejsVersions: string[];
+  packageManagers: string[];
+  userList: string[];
+  maximumMemory: number; // server RAM cap for the PM2 memory limit, MB
+}
+
+/**
+ * Full configuration of a single project, for the edit form.
+ * Source: docs/en/nodejs-projects.md §get_project_info (`project_config`).
+ */
+export interface NodeProjectConfig {
+  name: string; // project_name
+  cwd: string; // project_cwd — identifies the project
+  script: string; // project_script — key from package.json scripts
+  port: number | null;
+  runUser: string; // run_user
+  nodejsVersion: string; // nodejs_version
+  note: string; // project_ps / ps
+  powerOn: boolean; // is_power_on
+  maxMemoryLimit: number | null; // max_memory_limit, MB
+  domains: string[];
+}
+
+/**
+ * Input for `modify_project`.
+ * Source: docs/en/nodejs-projects.md §modify_project.
+ */
+export interface ProjectModifyInput {
+  cwd: string;
+  name: string;
+  script: string;
+  port: number;
+  runUser: string;
+  nodejsVersion: string;
+  note: string;
+  powerOn: boolean;
+}
+
+/**
+ * Input for `create_project` ("Default project" mode).
+ * Source: docs/en/nodejs-projects.md §create_project.
+ */
+export interface ProjectCreateInput {
+  cwd: string;
+  name: string;
+  script: string;
+  port: number;
+  runUser: string;
+  nodejsVersion: string;
+  note: string;
+  domains: string[];
+  bindExtranet: boolean;
+  powerOn: boolean;
+  maxMemoryLimit: number;
+  env: string;
+}
+
 export class AaPanelError extends Error {
   constructor(
     public readonly kind: AaPanelErrorKind,

@@ -8,6 +8,11 @@ import {
   type ServerMetrics,
   type NodeProject,
   type ProjectOperation,
+  type RunScript,
+  type ProjectPreEnv,
+  type NodeProjectConfig,
+  type ProjectModifyInput,
+  type ProjectCreateInput,
   type Database,
   type DbEngine,
   type DbCreateInput,
@@ -162,7 +167,7 @@ export class AaPanelClient {
    */
   async batchOperation(
     names: string[],
-    op: ProjectOperation,
+    op: ProjectOperation | 'delete',
   ): Promise<{msg: string; msg_list: Array<{name: string; status: boolean; msg: string}>}> {
     const raw = await this.post<{
       status: number;
@@ -172,6 +177,220 @@ export class AaPanelClient {
       operation_type: op,
     });
     return raw.message;
+  }
+
+  /**
+   * Run commands from the `scripts` section of a project's `package.json`.
+   *
+   * Source: docs/en/nodejs-projects.md §get_run_list.
+   *   POST /v2/project/nodejs/get_run_list, body data={"project_cwd":"<path>"}
+   *   Success: { status: 0, message: { "<key>": "<command>", ... } }
+   *   Error  : { status: -1, message: { error_msg: "...", data: "..." } }
+   *
+   * Throws AaPanelError('panel_error') with the panel's error_msg when the
+   * directory does not exist or has no readable package.json.
+   */
+  async getRunList(projectCwd: string): Promise<RunScript[]> {
+    const data = JSON.stringify({project_cwd: projectCwd});
+    const raw = await this.post<{
+      status: number;
+      message: Record<string, string> | {error_msg?: string; data?: string};
+    }>('v2/project/nodejs/get_run_list', {data});
+
+    if (raw.status !== 0) {
+      const m = (raw.message ?? {}) as {error_msg?: string; data?: string};
+      throw new AaPanelError('panel_error', m.error_msg || m.data || 'Failed to read package.json scripts');
+    }
+    const scripts = (raw.message ?? {}) as Record<string, string>;
+    return Object.entries(scripts).map(([key, command]) => ({key, command: String(command)}));
+  }
+
+  /**
+   * Node.js versions installed in the panel.
+   * Source: docs/en/nodejs-projects.md §get_nodejs_version (data= empty).
+   */
+  async getNodeVersions(): Promise<string[]> {
+    const raw = await this.post<{status: number; message: unknown}>(
+      'v2/project/nodejs/get_nodejs_version',
+      {data: ''},
+    );
+    if (raw.status !== 0 || !Array.isArray(raw.message)) {
+      throw new AaPanelError('panel_error', 'Failed to read Node.js versions');
+    }
+    return raw.message.filter((v): v is string => typeof v === 'string');
+  }
+
+  /**
+   * Metadata for the create-project form (Node versions, package managers,
+   * system users, RAM cap).
+   *
+   * Source: docs/en/nodejs-projects.md §pre_env. NOTE the different path:
+   * POST /v2/mod/nodejs/com/pre_env (no `data` field, auth fields only).
+   */
+  async getCreateEnv(): Promise<ProjectPreEnv> {
+    const raw = await this.post<{
+      status: number;
+      message: {
+        nodejs_versions?: unknown;
+        package_managers?: unknown;
+        user_list?: unknown;
+        maximum_memory?: unknown;
+      };
+    }>('v2/mod/nodejs/com/pre_env');
+
+    if (raw.status !== 0 || !raw.message || typeof raw.message !== 'object') {
+      throw new AaPanelError('panel_error', 'Failed to read create-form metadata');
+    }
+    const m = raw.message;
+    const strArray = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+    return {
+      nodejsVersions: strArray(m.nodejs_versions),
+      packageManagers: strArray(m.package_managers),
+      userList: strArray(m.user_list),
+      maximumMemory: typeof m.maximum_memory === 'number' ? m.maximum_memory : 0,
+    };
+  }
+
+  /**
+   * Full configuration of a single project, for the edit form.
+   * Reads `get_project_info` and pulls fields out of `project_config`.
+   * Source: docs/en/nodejs-projects.md §get_project_info.
+   */
+  async getProjectConfig(name: string): Promise<NodeProjectConfig> {
+    const data = JSON.stringify({project_name: name});
+    const raw = await this.post<{
+      status: number;
+      message: {
+        name?: string;
+        path?: string;
+        ps?: string;
+        project_config?: {
+          project_name?: string;
+          project_cwd?: string;
+          project_script?: string;
+          port?: number;
+          run_user?: string;
+          nodejs_version?: string;
+          project_ps?: string;
+          is_power_on?: number;
+          max_memory_limit?: number;
+          domains?: string[];
+        };
+      };
+    }>('v2/project/nodejs/get_project_info', {data});
+
+    if (raw.status !== 0 || !raw.message) {
+      throw new AaPanelError('panel_error', 'Failed to read project info');
+    }
+    const msg = raw.message;
+    const cfg = msg.project_config ?? {};
+    return {
+      name: cfg.project_name ?? msg.name ?? name,
+      cwd: cfg.project_cwd ?? msg.path ?? '',
+      script: cfg.project_script ?? '',
+      port: typeof cfg.port === 'number' ? cfg.port : null,
+      runUser: cfg.run_user ?? '',
+      nodejsVersion: cfg.nodejs_version ?? '',
+      note: cfg.project_ps ?? msg.ps ?? '',
+      powerOn: cfg.is_power_on === 1,
+      maxMemoryLimit: typeof cfg.max_memory_limit === 'number' ? cfg.max_memory_limit : null,
+      domains: Array.isArray(cfg.domains) ? cfg.domains : [],
+    };
+  }
+
+  /**
+   * Create a new Node.js project ("Default project" mode).
+   * Source: docs/en/nodejs-projects.md §create_project.
+   */
+  async createProject(input: ProjectCreateInput): Promise<void> {
+    const data = JSON.stringify({
+      project_cwd: input.cwd,
+      project_name: input.name,
+      project_script: input.script,
+      port: String(input.port),
+      run_user: input.runUser,
+      nodejs_version: input.nodejsVersion,
+      project_ps: input.note,
+      domains: input.domains,
+      bind_extranet: input.bindExtranet ? 1 : 0,
+      is_power_on: input.powerOn ? 1 : 0,
+      max_memory_limit: input.maxMemoryLimit,
+      project_env: input.env,
+    });
+    const raw = await this.post<{status: number; message: unknown}>(
+      'v2/project/nodejs/create_project',
+      {data},
+    );
+    this.assertProjectMutationOk(raw, 'Failed to create project');
+  }
+
+  /**
+   * Modify an existing project's settings.
+   * Source: docs/en/nodejs-projects.md §modify_project.
+   */
+  async modifyProject(input: ProjectModifyInput): Promise<void> {
+    const data = JSON.stringify({
+      project_cwd: input.cwd,
+      project_name: input.name,
+      project_script: input.script,
+      port: String(input.port),
+      run_user: input.runUser,
+      nodejs_version: input.nodejsVersion,
+      project_ps: input.note,
+      is_power_on: input.powerOn ? 1 : 0,
+    });
+    const raw = await this.post<{status: number; message: unknown}>(
+      'v2/project/nodejs/modify_project',
+      {data},
+    );
+    this.assertProjectMutationOk(raw, 'Failed to modify project');
+  }
+
+  /**
+   * Delete a project (removes it from the panel; the on-disk directory is
+   * preserved). Goes through `batch_operation_project` with operation_type=delete.
+   * Source: docs/en/nodejs-projects.md §batch_operation_project (delete).
+   */
+  async deleteProject(name: string): Promise<void> {
+    const result = await this.batchOperation([name], 'delete');
+    const item = result.msg_list?.[0];
+    if (item && item.status === false) {
+      throw new AaPanelError('panel_error', item.msg || 'Failed to delete project');
+    }
+  }
+
+  /**
+   * Asserts a create/modify project response succeeded. These return
+   * { status, message: { status_code, error_msg, data } }: top-level
+   * status must be 0 AND the inner status_code must not be negative.
+   */
+  private assertProjectMutationOk(
+    raw: {status?: number; message?: unknown},
+    fallback: string,
+  ): void {
+    if (raw?.status !== 0) {
+      throw new AaPanelError('panel_error', this.extractProjectError(raw?.message) || fallback);
+    }
+    const m = raw.message;
+    if (m && typeof m === 'object') {
+      const obj = m as {status_code?: number; error_msg?: string};
+      if (typeof obj.status_code === 'number' && obj.status_code < 0) {
+        throw new AaPanelError('panel_error', obj.error_msg || fallback);
+      }
+    }
+  }
+
+  /** Best-effort extraction of a human message from a panel error payload. */
+  private extractProjectError(message: unknown): string | null {
+    if (typeof message === 'string') return message;
+    if (message && typeof message === 'object') {
+      const obj = message as {error_msg?: unknown; data?: unknown; result?: unknown};
+      for (const v of [obj.error_msg, obj.result, obj.data]) {
+        if (typeof v === 'string' && v) return v;
+      }
+    }
+    return null;
   }
 
   /**
