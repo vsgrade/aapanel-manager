@@ -70,10 +70,15 @@ Next.js 16 (App Router, RSC, Server Actions) + TS strict + Prisma v7/Postgres + 
 | `web/src/server/actions/databases.ts` (+`lib/validation/database.ts`) | Раздел БД: список/создание/удаление (MySQL+PostgreSQL, admin+аудит, удаление с подтверждением имени) |
 | `web/src/lib/aapanel/client.ts` (DB-методы) | `listDatabases`/`createDatabase`/`deleteDatabase` — два движка (MySQL flat `/v2/data`,`/v2/database`; PG `/v2/database/pgsql/*` тело `data=JSON`); пароли БД вырезаются |
 | `web/src/app/(app)/servers/[id]/databases/` | Раздел «Базы данных» (RSC) |
+| `web/src/components/servers/detail/directory-picker-dialog.tsx` | Пикер каталога сервера (метод `GetDirNew`) для пути проекта при создании; переиспользуем в будущем разделе «Файлы» |
 | `web/src/components/servers/*` | Таблица (TanStack v8), колонки, статус-бейдж, тулбар, диалоги add/edit/delete |
 | `web/src/app/(app)/servers/{page,loading,error}.tsx` | Маршрут `/servers` (RSC) |
+| `web/src/lib/version/*` | Фича версий: `semver` (сравнение без зависимостей), `current` (версия из `APP_VERSION`/`package.json`), `github` (чтение GitHub Releases, кэш, приватный репо), `types`, `upgrade-command`, `settings` (server-only: настройки + шифрование токена + история версий) |
+| `web/src/server/actions/updates.ts` (+`lib/validation/update-settings.ts`) | Раздел «Версии/обновления»: статус (текущая vs последняя + changelog), чтение/сохранение настроек (способ установки, GitHub-репо, токен) — admin+аудит |
+| `web/src/app/(app)/settings/` + `components/settings/*` | Страница «Настройки» (RSC, admin-only): `update-status-card` (статус/changelog/команда/история), `update-settings-form` (способ установки + источник) |
 | `web/src/components/{theme-provider,theme-toggle}.tsx` | next-themes провайдер + 3-позиционный переключатель тем (светлая/серая-dim/тёмная) в шапке; палитры в `globals.css` |
-| `web/messages/{ru,en}.json` | Строки UI (namespaces `servers`, `theme`, …) |
+| `web/messages/{ru,en}.json` | Строки UI (namespaces `servers`, `theme`, `updates`, …) |
+| `web/prisma/schema.prisma` | Модели: User/Server/ServerStatus/AuditLog + **UpdateSettings** (singleton: способ установки, GitHub-репо, зашифр. токен) + **VersionHistory** (история версий) |
 
 **Безопасность:** `api_sk` шифруется в покое; расшифровка только в Server Actions/фабрике (`server-only`); в кеш-выборку и клиент секрет не попадает; мутации — только admin; все мутации в `AuditLog`.
 
