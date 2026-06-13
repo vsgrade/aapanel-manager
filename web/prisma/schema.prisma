@@ -60,3 +60,30 @@ model AuditLog {
   @@index([serverId])
   @@index([userId])
 }
+
+/// Single-row settings for the self-update feature (id is fixed to "singleton").
+model UpdateSettings {
+  id              String   @id @default("singleton")
+  deploymentMode  String   @default("manual") // docker | systemd | aapanel | manual
+  githubOwner     String   @default("")
+  githubRepo      String   @default("")
+  githubTokenEnc  String? // encrypted PAT for a private repo
+  // aapanel mode: how the panel restarts itself via its own API.
+  aapanelServerId String? // soft reference to a Server id (validated on use)
+  aapanelProject  String? // the panel's Node project name in aaPanel
+  startScript     String? // project_script from package.json
+  // docker / systemd mode:
+  serviceName     String? // compose service or pm2/systemd unit name
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+/// History of installed versions — shown in the UI and used for future rollback.
+model VersionHistory {
+  id          String   @id @default(cuid())
+  version     String
+  installedAt DateTime @default(now())
+  note        String?
+
+  @@index([installedAt])
+}
