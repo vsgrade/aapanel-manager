@@ -183,6 +183,10 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
     !result.ok && result.fieldErrors ? result.fieldErrors[name]?.[0] : undefined;
 
   const scriptOptions = runScripts;
+  // Render the form only once its data is loaded, so the uncontrolled fields'
+  // defaultValue is set once at mount and never changes (avoids Base UI's
+  // "changing the default value of an uncontrolled field" warning).
+  const dataReady = mode === 'edit' ? config !== null : preEnv !== null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -205,7 +209,7 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
             <p className="font-medium">{t('loadFailed')}</p>
             <p className="mt-1 text-xs opacity-80">{loadError}</p>
           </div>
-        ) : (
+        ) : dataReady ? (
           <form onSubmit={onSubmit} className="space-y-4">
             {mode === 'edit' && config ? (
               <>
@@ -439,7 +443,7 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
               </Button>
             </DialogFooter>
           </form>
-        )}
+        ) : null}
       </DialogContent>
     </Dialog>
   );
