@@ -410,6 +410,36 @@ export class AaPanelClient {
     return raw.message.result;
   }
 
+  // ── Files (directory browsing) ─────────────────────────────────────────────
+
+  /**
+   * List the sub-directories of a path — backs the directory picker used when
+   * creating a project. Source: docs/en/files.md §GetDirNew (flat body).
+   * Returns only folder names (files are ignored here).
+   */
+  async listDir(path: string): Promise<{path: string; dirs: string[]}> {
+    const raw = await this.post<{
+      status: number;
+      message: {path?: string; dir?: Array<{nm?: unknown}>} | string;
+    }>('v2/files?action=GetDirNew', {
+      path,
+      is_operating: 'true',
+      p: '1',
+      showRow: '1000',
+      disk: 'false',
+    });
+
+    if (raw.status !== 0 || !raw.message || typeof raw.message === 'string') {
+      const msg = typeof raw.message === 'string' ? raw.message : 'Failed to list directory';
+      throw new AaPanelError('panel_error', msg);
+    }
+    const dirs = (raw.message.dir ?? [])
+      .map((d) => (typeof d?.nm === 'string' ? d.nm : ''))
+      .filter((n) => n.length > 0)
+      .sort((a, b) => a.localeCompare(b));
+    return {path: raw.message.path ?? path, dirs};
+  }
+
   // ── System monitoring ─────────────────────────────────────────────────────
 
   /**

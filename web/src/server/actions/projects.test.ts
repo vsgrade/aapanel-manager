@@ -63,6 +63,7 @@ vi.mock('@/lib/aapanel', async (orig) => {
       createProject: async () => undefined,
       modifyProject: async () => undefined,
       deleteProject: async () => undefined,
+      listDir: async () => ({path: '/www/node-projects', dirs: ['app', 'another']}),
     })),
   };
 });
@@ -82,6 +83,7 @@ import {
   createProjectAction,
   modifyProjectAction,
   deleteProjectAction,
+  listDirAction,
 } from './projects';
 
 /** Builds a valid create-project FormData. */
@@ -365,5 +367,24 @@ describe('deleteProjectAction', () => {
     fd.set('confirm', 'app');
     const res = await deleteProjectAction(serverId, fd);
     expect(res.ok).toBe(false);
+  });
+});
+
+describe('listDirAction', () => {
+  it('admin lists directories', async () => {
+    guard.user.role = 'admin';
+    const res = await listDirAction(serverId, '/www/node-projects');
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.path).toBe('/www/node-projects');
+      expect(res.dirs).toEqual(['app', 'another']);
+    }
+  });
+
+  it('viewer is forbidden', async () => {
+    guard.user.role = 'viewer';
+    const res = await listDirAction(serverId, '/www');
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.message).toBe('forbidden');
   });
 });

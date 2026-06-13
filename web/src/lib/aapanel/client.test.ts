@@ -952,3 +952,42 @@ describe('AaPanelClient.deleteProject', () => {
     } satisfies Partial<AaPanelError>);
   });
 });
+
+describe('AaPanelClient.listDir', () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns sorted folder names from GetDirNew; uses a flat path body', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: 0,
+        message: {
+          path: '/www/node-projects',
+          dir: [{nm: 'myapp'}, {nm: 'another'}],
+          files: [{nm: 'readme.txt'}],
+        },
+      }) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    const res = await client.listDir('/www/node-projects');
+
+    expect(res.path).toBe('/www/node-projects');
+    expect(res.dirs).toEqual(['another', 'myapp']); // sorted; files ignored
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('v2/files?action=GetDirNew');
+    const body = decodeURIComponent(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body).toContain('path=/www/node-projects');
+    expect(body).not.toContain('data=');
+  });
+
+  it('throws AaPanelError when the panel returns a non-zero status', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({status: -1, message: 'Directory does not exist'}) as never,
+    );
+    const client = new AaPanelClient(cfg);
+    await expect(client.listDir('/nope')).rejects.toMatchObject({
+      kind: 'panel_error',
+    } satisfies Partial<AaPanelError>);
+  });
+});

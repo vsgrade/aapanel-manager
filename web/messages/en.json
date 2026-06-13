@@ -135,7 +135,14 @@
     "deleted": "Project deleted",
     "saved": "Saved",
     "deleteHint": "The project will be removed from the panel. The directory on disk is preserved.",
-    "confirmDeleteLabel": "Type the project name to confirm"
+    "confirmDeleteLabel": "Type the project name to confirm",
+    "browse": "Browse",
+    "pickFolder": "Pick a folder",
+    "pickFolderHint": "Open the folder that contains package.json and click Select",
+    "go": "Go",
+    "up": "Up",
+    "noFolders": "No folders",
+    "selectFolder": "Select this folder"
   },
   "databases": {
     "title": "Databases",

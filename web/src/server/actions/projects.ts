@@ -38,6 +38,7 @@ export type ProjectCreateEnvResult =
   | {ok: true; preEnv: ProjectPreEnv}
   | {ok: false; message: string};
 export type RunListResult = {ok: true; scripts: RunScript[]} | {ok: false; message: string};
+export type ListDirResult = {ok: true; path: string; dirs: string[]} | {ok: false; message: string};
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -343,5 +344,28 @@ export async function deleteProjectAction(serverId: string, formData: FormData):
     log.error({err, serverId, name}, 'deleteProjectAction failed');
     await recordAudit({userId, serverId, action: 'project.delete', target: name, result: 'error'});
     return {ok: false, error: describeError(err)};
+  }
+}
+
+/**
+ * Lists sub-directories of a path on the server — backs the directory picker in
+ * the create-project form. Requires admin role (browsing the filesystem is
+ * privileged). Defaults to "/" when no path is given.
+ */
+export async function listDirAction(serverId: string, path: string): Promise<ListDirResult> {
+  try {
+    await requireAdmin();
+  } catch {
+    return {ok: false, message: 'forbidden'};
+  }
+  const target = path.trim() || '/';
+  try {
+    const creds = await loadServerCreds(serverId);
+    const client = createClientForServer(creds);
+    const res = await client.listDir(target);
+    return {ok: true, path: res.path, dirs: res.dirs};
+  } catch (err) {
+    log.error({err, serverId, path: target}, 'listDirAction failed');
+    return {ok: false, message: describeError(err)};
   }
 }

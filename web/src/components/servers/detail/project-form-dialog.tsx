@@ -3,7 +3,7 @@
 import {useState, useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {toast} from 'sonner';
-import {Loader2} from 'lucide-react';
+import {Loader2, FolderOpen} from 'lucide-react';
 import type {NodeProjectConfig, ProjectPreEnv, RunScript} from '@/lib/aapanel';
 import {
   createProjectAction,
@@ -26,6 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {DirectoryPickerDialog} from '@/components/servers/detail/directory-picker-dialog';
 
 const INITIAL: ProjectMutResult = {ok: false, error: ''};
 
@@ -144,8 +145,8 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
     }
   }
 
-  function loadCommands() {
-    const path = cwd.trim();
+  function loadCommands(pathArg?: string) {
+    const path = (pathArg ?? cwd).trim();
     if (!path) return;
     setScriptsError(null);
     startScriptsLoad(async () => {
@@ -159,6 +160,12 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
         setScriptsError(res.message);
       }
     });
+  }
+
+  // Picking a folder fills the path and loads its package.json scripts.
+  function onPickDirectory(picked: string) {
+    setCwd(picked);
+    loadCommands(picked);
   }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -256,11 +263,22 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
                     required
                     autoComplete="off"
                   />
+                  <DirectoryPickerDialog
+                    serverId={serverId}
+                    initialPath={cwd}
+                    onSelect={onPickDirectory}
+                    trigger={
+                      <Button type="button" variant="outline" title={t('browse')}>
+                        <FolderOpen className="size-4" />
+                        <span className="sr-only">{t('browse')}</span>
+                      </Button>
+                    }
+                  />
                   <Button
                     type="button"
                     variant="outline"
                     disabled={!cwd.trim() || scriptsLoading}
-                    onClick={loadCommands}
+                    onClick={() => loadCommands()}
                   >
                     {scriptsLoading ? <Loader2 className="size-4 animate-spin" /> : t('loadCommands')}
                   </Button>
