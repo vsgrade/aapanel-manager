@@ -198,7 +198,7 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger render={trigger} />
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{mode === 'create' ? t('add') : t('edit')}</DialogTitle>
           <DialogDescription>
@@ -235,155 +235,156 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
               </p>
             ) : null}
 
-            {/* Name */}
-            {mode === 'create' ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="pf-name">{t('name')}</Label>
-                <Input id="pf-name" name="name" required autoComplete="off" />
-                {fieldErr('name') ? <p className="text-xs text-destructive">{fieldErr('name')}</p> : null}
-              </div>
-            ) : config ? (
-              <div className="space-y-1.5">
-                <Label>{t('name')}</Label>
-                <p className="text-sm font-medium">{config.name}</p>
-              </div>
-            ) : null}
-
-            {/* Path (create only) */}
-            {mode === 'create' ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="pf-cwd">{t('path')}</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="pf-cwd"
-                    name="cwd"
-                    value={cwd}
-                    onChange={(e) => setCwd(e.target.value)}
-                    placeholder="/www/node-projects/myapp"
-                    required
-                    autoComplete="off"
-                  />
-                  <DirectoryPickerDialog
-                    serverId={serverId}
-                    initialPath={cwd}
-                    onSelect={onPickDirectory}
-                    trigger={
-                      <Button type="button" variant="outline" title={t('browse')}>
-                        <FolderOpen className="size-4" />
-                        <span className="sr-only">{t('browse')}</span>
-                      </Button>
-                    }
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={!cwd.trim() || scriptsLoading}
-                    onClick={() => loadCommands()}
-                  >
-                    {scriptsLoading ? <Loader2 className="size-4 animate-spin" /> : t('loadCommands')}
-                  </Button>
+            {/* Two-column layout: long fields span both columns, short ones pair up. */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* Name */}
+              {mode === 'create' ? (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="pf-name">{t('name')}</Label>
+                  <Input id="pf-name" name="name" required autoComplete="off" />
+                  {fieldErr('name') ? <p className="text-xs text-destructive">{fieldErr('name')}</p> : null}
                 </div>
-                <p className="text-xs text-muted-foreground">{t('pathHint')}</p>
-                {fieldErr('cwd') ? <p className="text-xs text-destructive">{fieldErr('cwd')}</p> : null}
-                {scriptsError ? <p className="text-xs text-destructive">{scriptsError}</p> : null}
-              </div>
-            ) : null}
-
-            {/* Start command */}
-            <div className="space-y-1.5">
-              <Label htmlFor="pf-script">{t('startCommand')}</Label>
-              <select
-                id="pf-script"
-                name="script"
-                value={script}
-                onChange={(e) => setScript(e.target.value)}
-                className={SELECT_CLASS}
-                required
-                disabled={scriptOptions.length === 0}
-              >
-                {scriptOptions.length === 0 ? (
-                  <option value="">{mode === 'create' ? t('loadCommandsFirst') : t('noScripts')}</option>
-                ) : (
-                  scriptOptions.map((s) => (
-                    <option key={s.key} value={s.key}>
-                      {s.command ? `${s.key} — ${s.command}` : s.key}
-                    </option>
-                  ))
-                )}
-              </select>
-              <p className="text-xs text-muted-foreground">{t('startCommandHint')}</p>
-              {fieldErr('script') ? <p className="text-xs text-destructive">{fieldErr('script')}</p> : null}
-            </div>
-
-            {/* Port */}
-            <div className="space-y-1.5">
-              <Label htmlFor="pf-port">{t('port')}</Label>
-              <Input
-                id="pf-port"
-                name="port"
-                type="number"
-                min={1}
-                max={65535}
-                defaultValue={mode === 'edit' && config?.port != null ? config.port : undefined}
-                required
-                autoComplete="off"
-              />
-              {fieldErr('port') ? <p className="text-xs text-destructive">{fieldErr('port')}</p> : null}
-            </div>
-
-            {/* Node version */}
-            <div className="space-y-1.5">
-              <Label htmlFor="pf-node">{t('nodeVersion')}</Label>
-              <select
-                id="pf-node"
-                name="nodejsVersion"
-                className={SELECT_CLASS}
-                defaultValue={mode === 'edit' ? (config?.nodejsVersion ?? '') : (preEnv?.nodejsVersions[0] ?? '')}
-                required
-              >
-                {(mode === 'edit' ? nodeVersions : (preEnv?.nodejsVersions ?? [])).map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-              {fieldErr('nodejsVersion') ? (
-                <p className="text-xs text-destructive">{fieldErr('nodejsVersion')}</p>
+              ) : config ? (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>{t('name')}</Label>
+                  <p className="text-sm font-medium">{config.name}</p>
+                </div>
               ) : null}
-            </div>
 
-            {/* Run user */}
-            <div className="space-y-1.5">
-              <Label htmlFor="pf-user">{t('runUser')}</Label>
-              {mode === 'create' && preEnv && preEnv.userList.length > 0 ? (
+              {/* Path (create only) */}
+              {mode === 'create' ? (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="pf-cwd">{t('path')}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="pf-cwd"
+                      name="cwd"
+                      value={cwd}
+                      onChange={(e) => setCwd(e.target.value)}
+                      placeholder="/www/node-projects/myapp"
+                      required
+                      autoComplete="off"
+                    />
+                    <DirectoryPickerDialog
+                      serverId={serverId}
+                      initialPath={cwd}
+                      onSelect={onPickDirectory}
+                      trigger={
+                        <Button type="button" variant="outline" title={t('browse')}>
+                          <FolderOpen className="size-4" />
+                          <span className="sr-only">{t('browse')}</span>
+                        </Button>
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!cwd.trim() || scriptsLoading}
+                      onClick={() => loadCommands()}
+                    >
+                      {scriptsLoading ? <Loader2 className="size-4 animate-spin" /> : t('loadCommands')}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t('pathHint')}</p>
+                  {fieldErr('cwd') ? <p className="text-xs text-destructive">{fieldErr('cwd')}</p> : null}
+                  {scriptsError ? <p className="text-xs text-destructive">{scriptsError}</p> : null}
+                </div>
+              ) : null}
+
+              {/* Start command */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="pf-script">{t('startCommand')}</Label>
                 <select
-                  id="pf-user"
-                  name="runUser"
+                  id="pf-script"
+                  name="script"
+                  value={script}
+                  onChange={(e) => setScript(e.target.value)}
                   className={SELECT_CLASS}
-                  defaultValue={preEnv.userList.includes('www') ? 'www' : preEnv.userList[0]}
                   required
+                  disabled={scriptOptions.length === 0}
                 >
-                  {preEnv.userList.map((u) => (
-                    <option key={u} value={u}>
-                      {u}
-                    </option>
-                  ))}
+                  {scriptOptions.length === 0 ? (
+                    <option value="">{mode === 'create' ? t('loadCommandsFirst') : t('noScripts')}</option>
+                  ) : (
+                    scriptOptions.map((s) => (
+                      <option key={s.key} value={s.key}>
+                        {s.command ? `${s.key} — ${s.command}` : s.key}
+                      </option>
+                    ))
+                  )}
                 </select>
-              ) : (
+                <p className="text-xs text-muted-foreground">{t('startCommandHint')}</p>
+                {fieldErr('script') ? <p className="text-xs text-destructive">{fieldErr('script')}</p> : null}
+              </div>
+
+              {/* Port */}
+              <div className="space-y-1.5">
+                <Label htmlFor="pf-port">{t('port')}</Label>
                 <Input
-                  id="pf-user"
-                  name="runUser"
-                  defaultValue={config?.runUser ?? 'www'}
+                  id="pf-port"
+                  name="port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  defaultValue={mode === 'edit' && config?.port != null ? config.port : undefined}
                   required
                   autoComplete="off"
                 />
-              )}
-              {fieldErr('runUser') ? <p className="text-xs text-destructive">{fieldErr('runUser')}</p> : null}
-            </div>
+                {fieldErr('port') ? <p className="text-xs text-destructive">{fieldErr('port')}</p> : null}
+              </div>
 
-            {/* Create-only: memory limit, domains, bind extranet, env */}
-            {mode === 'create' ? (
-              <>
+              {/* Node version */}
+              <div className="space-y-1.5">
+                <Label htmlFor="pf-node">{t('nodeVersion')}</Label>
+                <select
+                  id="pf-node"
+                  name="nodejsVersion"
+                  className={SELECT_CLASS}
+                  defaultValue={mode === 'edit' ? (config?.nodejsVersion ?? '') : (preEnv?.nodejsVersions[0] ?? '')}
+                  required
+                >
+                  {(mode === 'edit' ? nodeVersions : (preEnv?.nodejsVersions ?? [])).map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+                {fieldErr('nodejsVersion') ? (
+                  <p className="text-xs text-destructive">{fieldErr('nodejsVersion')}</p>
+                ) : null}
+              </div>
+
+              {/* Run user */}
+              <div className="space-y-1.5">
+                <Label htmlFor="pf-user">{t('runUser')}</Label>
+                {mode === 'create' && preEnv && preEnv.userList.length > 0 ? (
+                  <select
+                    id="pf-user"
+                    name="runUser"
+                    className={SELECT_CLASS}
+                    defaultValue={preEnv.userList.includes('www') ? 'www' : preEnv.userList[0]}
+                    required
+                  >
+                    {preEnv.userList.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    id="pf-user"
+                    name="runUser"
+                    defaultValue={config?.runUser ?? 'www'}
+                    required
+                    autoComplete="off"
+                  />
+                )}
+                {fieldErr('runUser') ? <p className="text-xs text-destructive">{fieldErr('runUser')}</p> : null}
+              </div>
+
+              {/* Memory limit (create only) */}
+              {mode === 'create' ? (
                 <div className="space-y-1.5">
                   <Label htmlFor="pf-mem">{t('memoryLimit')}</Label>
                   <Input
@@ -403,8 +404,17 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
                     <p className="text-xs text-destructive">{fieldErr('maxMemoryLimit')}</p>
                   ) : null}
                 </div>
+              ) : null}
 
-                <div className="space-y-1.5">
+              {/* Note */}
+              <div className="space-y-1.5">
+                <Label htmlFor="pf-note">{t('note')}</Label>
+                <Input id="pf-note" name="note" defaultValue={config?.note ?? ''} autoComplete="off" />
+              </div>
+
+              {/* Domains (create only) */}
+              {mode === 'create' ? (
+                <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="pf-domains">{t('domains')}</Label>
                   <textarea
                     id="pf-domains"
@@ -415,13 +425,11 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
                   />
                   <p className="text-xs text-muted-foreground">{t('domainsHint')}</p>
                 </div>
+              ) : null}
 
-                <div className="flex items-center gap-2">
-                  <Switch id="pf-bind" checked={bindExtranet} onCheckedChange={setBindExtranet} />
-                  <Label htmlFor="pf-bind">{t('bindExtranet')}</Label>
-                </div>
-
-                <div className="space-y-1.5">
+              {/* Env (create only) */}
+              {mode === 'create' ? (
+                <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="pf-env">{t('env')}</Label>
                   <textarea
                     id="pf-env"
@@ -432,24 +440,21 @@ export function ProjectFormDialog({mode, serverId, projectName, trigger, onDone}
                   />
                   <p className="text-xs text-muted-foreground">{t('envHint')}</p>
                 </div>
-              </>
-            ) : null}
+              ) : null}
 
-            {/* Note */}
-            <div className="space-y-1.5">
-              <Label htmlFor="pf-note">{t('note')}</Label>
-              <Input
-                id="pf-note"
-                name="note"
-                defaultValue={config?.note ?? ''}
-                autoComplete="off"
-              />
-            </div>
+              {/* Bind extranet (create only) */}
+              {mode === 'create' ? (
+                <div className="flex items-center gap-2">
+                  <Switch id="pf-bind" checked={bindExtranet} onCheckedChange={setBindExtranet} />
+                  <Label htmlFor="pf-bind">{t('bindExtranet')}</Label>
+                </div>
+              ) : null}
 
-            {/* Autostart */}
-            <div className="flex items-center gap-2">
-              <Switch id="pf-power" checked={powerOn} onCheckedChange={setPowerOn} />
-              <Label htmlFor="pf-power">{t('autostart')}</Label>
+              {/* Autostart */}
+              <div className="flex items-center gap-2">
+                <Switch id="pf-power" checked={powerOn} onCheckedChange={setPowerOn} />
+                <Label htmlFor="pf-power">{t('autostart')}</Label>
+              </div>
             </div>
 
             <DialogFooter className="gap-2">
