@@ -1,10 +1,11 @@
 import Link from 'next/link';
+import type {Route} from 'next';
 import {getTranslations} from 'next-intl/server';
 import {signOut} from '@/auth';
 import {Button} from '@/components/ui/button';
 import {ThemeToggle} from '@/components/theme-toggle';
 
-export async function AppShell({children}: {children: React.ReactNode}) {
+export async function AppShell({children, isAdmin = false}: {children: React.ReactNode; isAdmin?: boolean}) {
   const t = await getTranslations('nav');
   return (
     <div className="min-h-screen">
@@ -12,6 +13,9 @@ export async function AppShell({children}: {children: React.ReactNode}) {
         <nav className="flex items-center gap-4">
           <Link href="/servers" className="font-semibold">aaPanel Manager</Link>
           <Link href="/servers" className="text-sm text-muted-foreground">{t('servers')}</Link>
+          {isAdmin && (
+            <Link href={'/settings' as Route} className="text-sm text-muted-foreground">{t('settings')}</Link>
+          )}
         </nav>
         <div className="flex items-center gap-2">
           <ThemeToggle />
