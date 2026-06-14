@@ -209,6 +209,7 @@
     "selectServer": "Select a server",
     "serviceName": "Service name",
     "serviceNameHint": "Docker: compose service name. systemd/PM2: unit/app name.",
-    "save": "Save"
+    "save": "Save",
+    "saved": "Saved"
   }
 }

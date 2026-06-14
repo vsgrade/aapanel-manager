@@ -209,6 +209,7 @@
     "selectServer": "Выберите сервер",
     "serviceName": "Имя сервиса",
     "serviceNameHint": "Docker: имя сервиса в compose. systemd/PM2: имя юнита/приложения.",
-    "save": "Сохранить"
+    "save": "Сохранить",
+    "saved": "Сохранено"
   }
 }

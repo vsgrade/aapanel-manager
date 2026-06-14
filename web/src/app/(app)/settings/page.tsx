@@ -12,6 +12,13 @@ export default async function SettingsPage() {
   const t = await getTranslations('updates');
   const [status, settingsData] = await Promise.all([getUpdateStatusAction(), getUpdateSettingsAction()]);
 
+  // Remount both cards when the saved config changes (after a save + router.refresh()):
+  // the status card re-seeds from fresh server data, and the form re-initialises its
+  // uncontrolled defaults from the new settings (no "defaultValue changed" warning).
+  const settingsKey = settingsData.ok
+    ? `${settingsData.settings.deploymentMode}|${settingsData.settings.githubOwner}/${settingsData.settings.githubRepo}`
+    : 'default';
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
@@ -19,10 +26,10 @@ export default async function SettingsPage() {
         <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      <UpdateStatusCard initial={status} />
+      <UpdateStatusCard key={`status-${settingsKey}`} initial={status} />
 
       {settingsData.ok ? (
-        <UpdateSettingsForm settings={settingsData.settings} servers={settingsData.servers} />
+        <UpdateSettingsForm key={`form-${settingsKey}`} settings={settingsData.settings} servers={settingsData.servers} />
       ) : null}
     </div>
   );

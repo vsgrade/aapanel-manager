@@ -6,8 +6,11 @@ describe('buildUpgradeCommand', () => {
     expect(buildUpgradeCommand('docker')).toBe('docker compose pull && docker compose up -d');
   });
 
-  it('manual falls back to the docker command', () => {
-    expect(buildUpgradeCommand('manual')).toContain('docker compose');
+  it('manual shows a generic build/migrate sequence (no orchestrator, no docker)', () => {
+    const cmd = buildUpgradeCommand('manual');
+    expect(cmd).toContain('pnpm build');
+    expect(cmd).toContain('migrate deploy');
+    expect(cmd).not.toContain('docker');
   });
 
   it('systemd includes the service name and a restart', () => {

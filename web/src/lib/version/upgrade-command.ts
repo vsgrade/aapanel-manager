@@ -5,6 +5,9 @@ import type {DeploymentMode} from './types';
  * mode (Phase 1 is read-only — the panel shows the command, it does not run it).
  * The actual one-click update lands in Phase 2 via deployment adapters.
  */
+/** Pull + install + build + apply migrations — the orchestrator-agnostic core. */
+const BUILD_AND_MIGRATE = 'git pull && pnpm install && pnpm build && pnpm prisma migrate deploy';
+
 export function buildUpgradeCommand(
   mode: DeploymentMode,
   opts: {serviceName?: string | null} = {},
@@ -14,12 +17,13 @@ export function buildUpgradeCommand(
     case 'docker':
       return 'docker compose pull && docker compose up -d';
     case 'systemd':
-      return `git pull && pnpm install && pnpm build && pnpm prisma migrate deploy && systemctl restart ${service}`;
+      return `${BUILD_AND_MIGRATE} && systemctl restart ${service}`;
     case 'aapanel':
       // Build on the server, then restart the Node project from the panel.
-      return 'git pull && pnpm install && pnpm build && pnpm prisma migrate deploy';
+      return BUILD_AND_MIGRATE;
     case 'manual':
     default:
-      return 'docker compose pull && docker compose up -d';
+      // No orchestrator — the operator restarts the app however they run it.
+      return BUILD_AND_MIGRATE;
   }
 }
