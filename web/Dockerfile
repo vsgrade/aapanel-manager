@@ -22,6 +22,11 @@ RUN pnpm prisma generate && pnpm build
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# Version metadata (passed by the release workflow) — surfaced by getCurrentVersion().
+ARG APP_VERSION=""
+ARG APP_COMMIT=""
+ARG APP_BUILD_TIME=""
+ENV APP_VERSION=$APP_VERSION APP_COMMIT=$APP_COMMIT APP_BUILD_TIME=$APP_BUILD_TIME
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static

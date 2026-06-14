@@ -34,3 +34,7 @@ out/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Личные рабочие заметки (не для репозитория)
+start.md
+HANDOFF.md
