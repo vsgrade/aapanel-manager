@@ -76,8 +76,12 @@ Next.js 16 (App Router, RSC, Server Actions) + TS strict + Prisma v7/Postgres + 
 | `web/src/lib/version/*` | Фича версий: `semver` (сравнение без зависимостей), `current` (версия из `APP_VERSION`/`package.json`), `github` (чтение GitHub Releases, кэш, приватный репо), `types`, `upgrade-command`, `settings` (server-only: настройки + шифрование токена + история версий) |
 | `web/src/server/actions/updates.ts` (+`lib/validation/update-settings.ts`) | Раздел «Версии/обновления»: статус (текущая vs последняя + changelog), чтение/сохранение настроек (способ установки, GitHub-репо, токен) — admin+аудит |
 | `web/src/app/(app)/settings/` + `components/settings/*` | Страница «Настройки» (RSC, admin-only): `update-status-card` (статус/changelog/команда/история), `update-settings-form` (способ установки + источник) |
+| `web/src/lib/users/policy.ts` (+test) | Чистые предикаты безопасности управления пользователями (нельзя удалить себя / разжаловать-удалить последнего администратора) — покрыты юнит-тестами |
+| `web/src/server/actions/users.ts` (+`lib/validation/user.ts`) | Раздел «Пользователи»: список/создание/смена роли/сброс пароля/удаление + смена своего пароля (admin+аудит, argon2, удаление с подтверждением e-mail, lock-out политика `lib/users/policy`) |
+| `web/src/app/(app)/users/` + `components/users/*` | Страница «Пользователи» (RSC, admin-only): таблица + диалоги создать/изменить/удалить + карточка «сменить свой пароль» |
+| `web/src/auth.ts` | Auth.js v5 (Credentials+JWT, роли); `trustHost: true` — самохостинг за reverse-proxy (иначе `UntrustedHost` в проде) |
 | `web/src/components/{theme-provider,theme-toggle}.tsx` | next-themes провайдер + 3-позиционный переключатель тем (светлая/серая-dim/тёмная) в шапке; палитры в `globals.css` |
-| `web/messages/{ru,en}.json` | Строки UI (namespaces `servers`, `theme`, `updates`, …) |
+| `web/messages/{ru,en}.json` | Строки UI (namespaces `nav`, `servers`, `theme`, `updates`, `users`, …) |
 | `web/prisma/schema.prisma` | Модели: User/Server/ServerStatus/AuditLog + **UpdateSettings** (singleton: способ установки, GitHub-репо, зашифр. токен) + **VersionHistory** (история версий) |
 
 **Безопасность:** `api_sk` шифруется в покое; расшифровка только в Server Actions/фабрике (`server-only`); в кеш-выборку и клиент секрет не попадает; мутации — только admin; все мутации в `AuditLog`.

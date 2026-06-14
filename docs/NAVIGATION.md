@@ -30,6 +30,7 @@
 - Разделы (Фаза 5): [Базы данных](superpowers/plans/2026-06-09-phase-5a-databases.md) — `/servers/[id]/databases`
 - Маршрут серверов: `web/src/app/(app)/servers/page.tsx` · Server Actions: `web/src/server/actions/servers.ts` · клиент панели: `web/src/lib/aapanel/`
 - Версии/обновления (admin): `web/src/app/(app)/settings/` · экшены `web/src/server/actions/updates.ts` · логика `web/src/lib/version/`
+- Пользователи (admin): `web/src/app/(app)/users/` · экшены `web/src/server/actions/users.ts` · политика `web/src/lib/users/policy.ts` · валидация `web/src/lib/validation/user.ts`
 - Live: воркер `web/src/worker/` · сервис статуса `web/src/lib/servers/status.ts` · realtime `web/src/lib/realtime/` · SSE `web/src/app/api/sse/servers/route.ts`
 
 ## Главные страницы
