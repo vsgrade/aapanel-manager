@@ -6,6 +6,11 @@ import {verifyPassword} from '@/lib/crypto/password';
 import {signInSchema} from '@/lib/validation/auth';
 
 export const {handlers, auth, signIn, signOut} = NextAuth({
+  // Self-hosted single-tenant panel: trust the app's own host header so Auth.js
+  // does not throw `UntrustedHost` in production (it only auto-trusts the host on
+  // Vercel or in development). Without this, every auth route 500s behind the
+  // operator's reverse proxy. See README / .env.example (optional AUTH_URL override).
+  trustHost: true,
   session: {strategy: 'jwt'},
   pages: {signIn: '/login'},
   providers: [
