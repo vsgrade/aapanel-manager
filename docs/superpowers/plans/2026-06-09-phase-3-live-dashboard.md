@@ -16,7 +16,7 @@
 - `web/src/lib/db/prisma.ts` → `prisma`; `web/src/env.ts` → `parseEnv()`; `web/src/log.ts` → `log` (pino).
 - `web/src/lib/utils/concurrency.ts` → `mapLimit`.
 - `web/src/server/actions/servers.ts` → existing actions (will be refactored to use the new status service).
-- `web/src/lib/audit.ts` → `recordAudit` (manual refresh audits; the worker does NOT audit每 cycle).
+- `web/src/lib/audit.ts` → `recordAudit` (manual refresh audits; the worker does NOT audit every cycle).
 - vitest setup already loads `web/.env` (`test-setup.ts`) and stubs `server-only`.
 
 **Scope (Phase 3):** worker (global poll of all servers) + `disk` + SSE live table + deploy wiring (worker service + migrations-on-start). **Deferred to Phase 4:** `projectCount` (needs project-list APIs) and faster ~3–5s polling of the actively-viewed server (needs the per-server detail route).

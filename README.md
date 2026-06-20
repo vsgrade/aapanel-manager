@@ -13,7 +13,7 @@
 
 ## Why this project
 
-[aaPanel](https://www.aapanel.com/) (the international edition of the BT/宝塔 panel) is a popular web control panel for Linux servers — but its HTTP API is only partly documented, and running several panels means logging into each one separately. This repository solves both problems:
+[aaPanel](https://www.aapanel.com/) (the international edition of the BT Panel) is a popular web control panel for Linux servers — but its HTTP API is only partly documented, and running several panels means logging into each one separately. This repository solves both problems:
 
 1. **The app** — a self-hosted Next.js dashboard that manages many aaPanel servers through a secure **backend proxy**. The browser never talks to a panel directly; your `api_sk` secrets stay **encrypted on your own server**.
 2. **The docs** — real, **verified** request/response examples for the aaPanel API, including the parts the official docs skip (Node.js project management in particular).

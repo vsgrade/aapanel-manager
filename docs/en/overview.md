@@ -2,7 +2,7 @@
 
 [Русская версия](../ru/overview.md) · [⌂ Home](../../README.md)
 
-aaPanel (the international edition of the BT/宝塔 panel) is a web control panel for Linux servers: sites, databases, FTP, SSL, firewall, backups, Node.js projects, and more. Almost all of it can be automated via an HTTP API.
+aaPanel (the international edition of the BT Panel) is a web control panel for Linux servers: sites, databases, FTP, SSL, firewall, backups, Node.js projects, and more. Almost all of it can be automated via an HTTP API.
 
 This repository documents **Node.js project management** and **server monitoring**, focusing on what is poorly documented officially but verified against a live panel (v8).
 
