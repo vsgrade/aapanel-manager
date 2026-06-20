@@ -14,7 +14,16 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN pnpm prisma generate && pnpm build
+# Build-time-only env. `next build` loads route modules, and src/lib/db/prisma.ts
+# instantiates the client at import (DATABASE_URL must be present — it never
+# connects; all app pages are auth-gated/dynamic, so no queries run at build).
+# These values are scoped to this RUN only: NOT baked into any image layer and
+# never used at runtime (the runner/worker receive the real env).
+RUN export DATABASE_URL="postgresql://build:build@127.0.0.1:5432/build" \
+           AUTH_SECRET="build-time-placeholder-not-used-at-runtime-0000" \
+           APP_ENCRYPTION_KEY="0000000000000000000000000000000000000000000000000000000000000000" \
+ && pnpm prisma generate \
+ && pnpm build
 
 # ── runner: minimal Next.js standalone web image ─────────────────────────────
 # This stage uses Next.js `output: 'standalone'` so it only contains the
