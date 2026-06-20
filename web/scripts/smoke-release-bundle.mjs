@@ -92,4 +92,8 @@ async function waitForHealth(url, expectedVersion, timeoutMs = 60_000) {
   throw new Error(`/api/health never became healthy within ${timeoutMs}ms (last: ${lastErr})`);
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Function declaration (hoisted) so waitForHealth can call it — it runs during
+// top-level execution before a `const sleep` further down would be initialized.
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
