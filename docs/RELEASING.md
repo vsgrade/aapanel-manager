@@ -18,7 +18,7 @@ git push origin v0.2.0
 По тегу `v*` workflow:
 1. собирает и пушит Docker-образы в **GHCR**:
    - `ghcr.io/<owner>/aapanel-manager:<version>` и `:latest` (приложение, стадия `runner`);
-   - `ghcr.io/<owner>/aapanel-manager-worker:<version>` и `:latest` (фоновый воркер, стадия `worker`);
+   - `ghcr.io/<owner>/aapanel-manager-worker:<version>` и `:latest` (миграции + опциональный выделенный поллер, стадия `worker`);
    - в образ прокидываются `APP_VERSION` (из тега) и `APP_COMMIT` (SHA) → их показывает `getCurrentVersion()`;
 2. создаёт **GitHub Release** с авто-заметками. Именно его читает встроенная проверка обновлений (`/settings` → «доступно обновление»).
 
@@ -29,9 +29,12 @@ git push origin v0.2.0
 services:
   app:
     image: ghcr.io/<owner>/aapanel-manager:0.2.0   # или :latest
-  worker:
-    image: ghcr.io/<owner>/aapanel-manager-worker:0.2.0
 ```
+
+Приложение опрашивает панели **внутри процесса `app`** (advisory-lock защищает от
+двойного опроса при нескольких репликах) — отдельный сервис `worker` не нужен.
+Образ `aapanel-manager-worker` остаётся для one-shot `migrate` и для опционального
+выделенного поллера, если опрос захочется вынести с веб-сервера.
 
 Обновление: `docker compose pull && docker compose up -d` (сервис `migrate` прогонит миграции).
 

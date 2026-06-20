@@ -44,11 +44,12 @@ COPY --from=builder /app/prisma ./prisma
 EXPOSE 3000
 CMD ["node", "server.js"]
 
-# ── worker: full-source runtime for `pnpm worker` (tsx + src/) ───────────────
-# The worker is executed via `tsx` which transpiles TypeScript at runtime, so
-# it needs the complete source tree, all node_modules (incl. tsx + prisma CLI),
-# and the tsconfig files.  Prisma migrations also run from this stage via
-# `pnpm prisma migrate deploy`.
+# ── worker: full-source runtime (tsx + src/) for migrations & optional poller ─
+# The app polls in-process now, so this stage is primarily the migration runner
+# (`pnpm prisma migrate deploy`, used by the compose `migrate` one-shot). It can
+# also run an optional dedicated poller (`pnpm worker`) if you ever want polling
+# off the web server. Executed via `tsx` (TypeScript at runtime), so it needs the
+# complete source tree, all node_modules (incl. tsx + prisma CLI), and tsconfig.
 #
 # Why a separate stage (not a single image):
 #   - The standalone runner image is ~3× smaller and has no build-time tools.

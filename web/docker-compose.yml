@@ -1,15 +1,18 @@
-# Phase 3 compose: Postgres + migrate (one-shot) + app + worker.
+# Compose: Postgres + migrate (one-shot) + app.
 #
 # Start order:
-#   postgres (health-checked) → migrate (one-shot) → app + worker
+#   postgres (health-checked) → migrate (one-shot) → app
 #
 # Usage:
 #   cp .env.example .env   # fill in DATABASE_URL, AUTH_SECRET, APP_ENCRYPTION_KEY …
 #   docker compose up --build
 #
 # The `migrate` service runs `pnpm prisma migrate deploy` once and exits (restart: no).
-# Both `app` and `worker` wait for it to complete successfully before starting.
-# Run only ONE worker replica — multiple replicas would double-poll aaPanel servers.
+# `app` waits for it to complete successfully before starting.
+#
+# The app polls aaPanel servers in-process (see src/instrumentation.ts). A
+# Postgres advisory lock makes it safe to scale `app` to several replicas —
+# exactly one of them polls. No separate worker service is required.
 
 services:
   postgres:
@@ -60,28 +63,6 @@ services:
       migrate:
         condition: service_completed_successfully
     command: ["node", "server.js"]
-    restart: unless-stopped
-
-  # ── Background polling worker ────────────────────────────────────────────────
-  # Runs `pnpm worker` (tsx src/worker/index.ts) on a poll interval.
-  # Uses the same `worker` build stage as migrate (full source + tsx).
-  # Do NOT scale this service (replicas > 1) — each replica polls all servers.
-  worker:
-    build:
-      context: .
-      target: worker
-    env_file: .env
-    environment:
-      NODE_ENV: production
-      # Override poll interval and concurrency from .env or here:
-      # POLL_INTERVAL_MS: 30000
-      # WORKER_CONCURRENCY: 5
-    depends_on:
-      postgres:
-        condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    command: ["pnpm", "worker"]
     restart: unless-stopped
 
 volumes:

@@ -2,21 +2,12 @@ import 'server-only';
 import {EventEmitter} from 'node:events';
 import {Client} from 'pg';
 import {SERVER_EVENTS_CHANNEL, parseServerEvent, type ServerEvent} from './channel';
+import {errInfo} from '@/lib/safe-error';
 import {log} from '@/log';
 
 type Globals = typeof globalThis & {__serverEvents?: ServerEventsHub};
 
 const RECONNECT_DELAY_MS = 3000;
-
-/** Safe error summary — never the raw pg error, whose message can embed the
- *  DATABASE_URL (incl. password). */
-function errInfo(err: unknown): {message: string; code?: string} {
-  if (err instanceof Error) {
-    const code = (err as {code?: unknown}).code;
-    return {message: err.message, code: typeof code === 'string' ? code : undefined};
-  }
-  return {message: String(err)};
-}
 
 class ServerEventsHub {
   private emitter = new EventEmitter();

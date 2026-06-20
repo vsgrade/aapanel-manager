@@ -1,8 +1,8 @@
 # aaPanel Manager — web app
 
 Next.js 16 App Router front-end + back-end proxy for managing aaPanel servers.
-This is **Phase 1–3**: auth, server CRUD, audit log, and a background polling
-worker. See the spec and plan in [`docs/superpowers/`](../docs/superpowers/).
+Auth, server CRUD, audit log, and live monitoring via an in-process background
+poller. See the spec and plan in [`docs/superpowers/`](../docs/superpowers/).
 
 ---
 
@@ -31,8 +31,9 @@ Edit `.env` and fill in:
 | `APP_ENCRYPTION_KEY` | `openssl rand -hex 32` |
 | `SEED_ADMIN_EMAIL` | e.g. `admin@example.com` |
 | `SEED_ADMIN_PASSWORD` | e.g. `changeme123` (change in prod) |
-| `POLL_INTERVAL_MS` | Worker poll interval in ms (default: `60000`) |
-| `WORKER_CONCURRENCY` | Max parallel server polls (default: `16`) |
+| `POLL_INTERVAL_MS` | Background poll interval in ms (default: `60000`) |
+| `WORKER_CONCURRENCY` | Max parallel server polls per cycle (default: `16`) |
+| `ENABLE_POLLER` | Poll in-process (default: `true`); set `false` only with a dedicated worker |
 
 ---
 
@@ -52,8 +53,9 @@ Default seeded admin: `admin@example.com` / `changeme123`
 
 ## Run mode 2 — Bare-metal (production, Ubuntu)
 
-The web app and the background worker are **two separate processes**.
-Run each under a process manager.
+One process: the Next.js server, which also polls aaPanel servers in-process.
+No separate worker is needed — a Postgres advisory lock keeps polling correct
+even if you run several app replicas.
 
 ```bash
 pnpm install --frozen-lockfile
@@ -81,18 +83,6 @@ module.exports = {
       // set it explicitly here too:
       env: { NODE_ENV: 'production', PORT: '3000' },
     },
-    {
-      name: 'aapanel-worker',
-      script: 'pnpm',
-      args: 'worker',
-      // Worker must run from the web/ directory (needs src/, tsconfig.worker.json)
-      cwd: '.',
-      env_file: '.env',
-      env: { NODE_ENV: 'production' },
-      // Do NOT set instances > 1 — multiple workers would double-poll every server.
-      instances: 1,
-      autorestart: true,
-    },
   ],
 };
 ```
@@ -103,21 +93,23 @@ pm2 save           # persist across reboots
 pm2 startup        # follow the printed command to enable on boot
 ```
 
-### Option B — systemd unit for the worker
+### Option B — systemd unit
 
-`/etc/systemd/system/aapanel-worker.service`:
+`/etc/systemd/system/aapanel-web.service`:
 
 ```ini
 [Unit]
-Description=aaPanel Manager – background polling worker
+Description=aaPanel Manager – web server + in-process poller
 After=network.target postgresql.service
 
 [Service]
 Type=simple
 User=nodeapp
-WorkingDirectory=/srv/aapanel/web
+WorkingDirectory=/srv/aapanel/web/.next/standalone
 EnvironmentFile=/srv/aapanel/web/.env
-ExecStart=/usr/bin/pnpm worker
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=5
 
@@ -127,28 +119,28 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now aapanel-worker
-sudo journalctl -fu aapanel-worker   # follow logs
+sudo systemctl enable --now aapanel-web
+sudo journalctl -fu aapanel-web   # follow logs
 ```
 
-> **Important:** run `pnpm prisma migrate deploy` before starting processes
-> so the schema exists.  Re-run it on every deploy before restarting the app
-> and worker.
+> **Important:** run `pnpm prisma migrate deploy` before starting (and on every
+> deploy) so the schema is in place.
 >
-> **Do not run multiple worker instances** — each instance polls every aaPanel
-> server on every tick.  One instance per environment is correct.
+> **Dedicated worker (optional):** to move polling off the web server, set
+> `ENABLE_POLLER=false` on the web process and run `pnpm worker` separately.
+> The Postgres advisory lock ensures exactly one active poller, so neither
+> several web replicas nor an extra worker ever double-poll.
 
 ---
 
 ## Run mode 3 — Docker Compose
 
-`docker-compose.yml` starts four containers in the correct order:
+`docker-compose.yml` starts three containers in the correct order:
 
 ```
 postgres (health-checked)
   └─► migrate (one-shot, exits 0)
-        ├─► app   (Next.js standalone, :3000)
-        └─► worker (tsx poller, restart: unless-stopped)
+        └─► app   (Next.js standalone + in-process poller, :3000)
 ```
 
 ```bash
@@ -160,7 +152,7 @@ docker compose up --build
 
 # Or in detached mode:
 docker compose up --build -d
-docker compose logs -f worker   # tail worker logs
+docker compose logs -f app   # tail app logs (incl. poll cycles)
 ```
 
 ### Required env vars for Docker
@@ -175,14 +167,16 @@ AUTH_SECRET=<openssl rand -base64 32>
 APP_ENCRYPTION_KEY=<openssl rand -hex 32>
 POLL_INTERVAL_MS=60000
 WORKER_CONCURRENCY=16
+ENABLE_POLLER=true
 ```
 
 > **Note:** the `migrate` service uses the `worker` build stage (full source +
 > Prisma CLI).  The `app` service uses the `runner` build stage (Next.js
-> standalone, ~3× smaller).  Both are built from the same `Dockerfile`.
+> standalone, ~3× smaller) and polls in-process.  Both are built from the same
+> `Dockerfile`.
 >
-> **Do not scale the `worker` service** (`--scale worker=2` etc.) — multiple
-> replicas would poll every aaPanel server multiple times per tick.
+> **Scaling:** run several `app` replicas if needed — a Postgres advisory lock
+> means exactly one polls. No separate worker service is required.
 
 ---
 
@@ -193,7 +187,7 @@ WORKER_CONCURRENCY=16
 | `pnpm dev` | Start dev server (hot-reload) |
 | `pnpm build` | Production build (Next.js standalone) |
 | `pnpm start` | Start production server |
-| `pnpm worker` | Start background polling worker |
+| `pnpm worker` | Start an *optional* dedicated poller (the app polls in-process by default) |
 | `pnpm lint` | Run ESLint |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm test` | Run Vitest unit/integration tests |
