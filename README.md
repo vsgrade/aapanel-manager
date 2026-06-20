@@ -1,20 +1,54 @@
-# aaPanel API Docs — Node.js Projects & Server Monitoring
+# aaPanel Manager
 
-> Unofficial, community documentation for the aaPanel API — **Node.js project management** and **server monitoring** — verified against a live panel (v8).
+> Self-hosted dashboard to manage your **aaPanel** servers from one place — backed by the most complete **verified API documentation** for aaPanel (Node.js projects, server monitoring, and more).
 
 🌍 **Language:** **English** · [Русский](README.ru.md)
 
+[![CI](https://github.com/vsgrade/aapanel-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/vsgrade/aapanel-manager/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
-## What is this?
+## Why this project
 
-[aaPanel](https://www.aapanel.com/) (the international edition of the BT/宝塔 panel) is a web control panel for Linux servers. It can be automated through an HTTP API, but the official documentation is incomplete — Node.js project management, in particular, is not documented. This repository fills that gap with **real, verified** request/response examples.
+[aaPanel](https://www.aapanel.com/) (the international edition of the BT/宝塔 panel) is a popular web control panel for Linux servers — but its HTTP API is only partly documented, and running several panels means logging into each one separately. This repository solves both problems:
 
-**Key finding:** a single permanent `api_sk` key, used at the panel root, covers **both** the official endpoints (`/system?action=…`) **and** the internal ones (`/v2/project/nodejs/…`) — so an app can manage everything with one stable key.
+1. **The app** — a self-hosted Next.js dashboard that manages many aaPanel servers through a secure **backend proxy**. The browser never talks to a panel directly; your `api_sk` secrets stay **encrypted on your own server**.
+2. **The docs** — real, **verified** request/response examples for the aaPanel API, including the parts the official docs skip (Node.js project management in particular).
 
-## Documentation
+**Key finding:** a single permanent `api_sk` key, used at the panel root, covers **both** the official endpoints (`/system?action=…`) **and** the internal ones (`/v2/project/nodejs/…`) — so one stable key manages everything.
+
+## App features
+
+- 🖥️ **Multi-server** — add / edit / remove aaPanel servers; `api_sk` encrypted at rest (AES-256-GCM)
+- 🟢 **Node.js projects** — list, status, info, logs, start / stop / restart, create / modify / delete
+- 📊 **Live monitoring** — CPU / RAM / disk with auto-refresh (background worker + Server-Sent Events)
+- 👥 **Users & roles** — admin / viewer, user management, self password change
+- 🔒 **Secure by design** — backend proxy; secrets never reach the browser; audit log of every change
+- 🌐 **i18n & themes** — English / Russian, light / dark
+
+> **Status:** actively developed. Multi-server, Node.js projects, monitoring and user management work today. Databases, files, FTP, cron and firewall are already covered in the API docs and are on the roadmap for the app.
+
+## Tech stack
+
+Next.js 16 (App Router · React Server Components · Server Actions) · React 19 · TypeScript · Prisma 7 + PostgreSQL · Auth.js v5 · Tailwind v4 · Docker (standalone).
+
+## Quick start (development)
+
+**Requirements:** Node 24, pnpm 11 (`corepack enable`), PostgreSQL.
+
+```bash
+git clone https://github.com/vsgrade/aapanel-manager.git
+cd aapanel-manager/web
+pnpm install
+cp .env.example .env          # set DATABASE_URL, AUTH_SECRET, APP_ENCRYPTION_KEY
+pnpm prisma migrate deploy
+pnpm dev                      # http://localhost:3000
+```
+
+For production (Docker images, releasing by tag, self-update) see [docs/RELEASING.md](docs/RELEASING.md).
+
+## API documentation
 
 | Document | Contents |
 |----------|----------|
@@ -55,6 +89,8 @@ Undocumented feature? Open the panel → DevTools (Network) → click it → ins
 
 ## Roadmap
 
+**API documentation**
+
 - [x] Node.js project management (create, list, info, scripts, versions, start/stop/restart, modify, delete)
 - [x] Websites (PHP/WP): list, create, delete
 - [x] Databases (MySQL + PostgreSQL CRUD)
@@ -65,7 +101,16 @@ Undocumented feature? Open the panel → DevTools (Network) → click it → ins
 - [x] Server monitoring (CPU/RAM/disk)
 - [x] Verified `api_sk` covers internal endpoints too
 - [ ] More modules (SSL, domains, backups)
-- [ ] Next.js management app on top of this API (backend proxy, `api_sk`)
+
+**App**
+
+- [x] Multi-server management (encrypted `api_sk`, test connection, audit log)
+- [x] Node.js projects (CRUD + control + logs)
+- [x] Live monitoring (background worker + SSE)
+- [x] Users & roles, authentication
+- [x] Version display + update settings
+- [ ] Databases / Files / FTP / Cron / Firewall sections in the app
+- [ ] Update / rollback actions
 
 ## Disclaimer
 
