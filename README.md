@@ -9,6 +9,8 @@
 
 ---
 
+![aaPanel Manager — servers dashboard](docs/screenshots/servers.png)
+
 ## Why this project
 
 [aaPanel](https://www.aapanel.com/) (the international edition of the BT/宝塔 panel) is a popular web control panel for Linux servers — but its HTTP API is only partly documented, and running several panels means logging into each one separately. This repository solves both problems:
@@ -28,6 +30,13 @@
 - 🌐 **i18n & themes** — English / Russian, light / dark
 
 > **Status:** actively developed. Multi-server, Node.js projects, monitoring and user management work today. Databases, files, FTP, cron and firewall are already covered in the API docs and are on the roadmap for the app.
+
+## Screenshots
+
+|  |  |
+|---|---|
+| **Servers (dark theme)**<br>![Servers — dark](docs/screenshots/servers-dark.png) | **Add a server**<br>![Add server](docs/screenshots/add-server.png) |
+| **Users & roles**<br>![Users](docs/screenshots/users.png) | **Versions & updates**<br>![Settings](docs/screenshots/settings.png) |
 
 ## Tech stack
 
