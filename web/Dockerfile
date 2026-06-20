@@ -57,12 +57,11 @@ CMD ["node", "server.js"]
 FROM base AS worker
 WORKDIR /app
 ENV NODE_ENV=production
-# Copy everything the worker needs: source, config, node_modules, prisma.
-# node_modules comes from `deps` (pre-build), so overlay the Prisma client that
-# `prisma generate` produced in `builder` (node_modules/.prisma) — otherwise
-# PrismaClient has no generated engine/client and the worker crashes at startup.
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+# node_modules from the `builder` stage already contains the generated Prisma
+# client (`prisma generate` ran there). Copy it whole instead of overlaying a
+# separate `node_modules/.prisma` path — under pnpm + Prisma 7 (engine-less
+# driver adapter) that top-level path does not exist, so the old COPY failed.
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
