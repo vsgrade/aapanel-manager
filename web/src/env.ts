@@ -15,6 +15,19 @@ const EnvSchema = z.object({
     .string()
     .default('true')
     .transform((v) => !['false', '0', 'no', 'off'].includes(v.trim().toLowerCase())),
+  // Filesystem root for self-update releases (aaPanel/systemd modes). Layout:
+  //   <root>/releases/<version>/   unpacked release bundles
+  //   <root>/current               symlink → the active release (aaPanel cwd)
+  //   <root>/backups/              pre-update DB dumps
+  //   <root>/tmp/                  download scratch space
+  // Optional: when unset, self-update staging is disabled (the panel still
+  // shows versions and the manual upgrade command).
+  APP_RELEASE_ROOT: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

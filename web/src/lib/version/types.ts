@@ -13,4 +13,8 @@ export interface UpdateSettingsView {
   aapanelProject: string | null;
   startScript: string | null;
   serviceName: string | null;
+  /** Version downloaded + migrated and awaiting activation (Phase 2b), or null. */
+  stagedVersion: string | null;
+  /** ISO timestamp when the staged release was prepared, or null. */
+  stagedAt: string | null;
 }

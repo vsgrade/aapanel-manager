@@ -22,4 +22,9 @@ describe('parseEnv', () => {
     expect(parseEnv({...valid, ENABLE_POLLER: 'true'}).ENABLE_POLLER).toBe(true);
     expect(parseEnv({...valid, ENABLE_POLLER: '1'}).ENABLE_POLLER).toBe(true);
   });
+
+  it('leaves APP_RELEASE_ROOT undefined when unset, trims when set', () => {
+    expect(parseEnv(valid).APP_RELEASE_ROOT).toBeUndefined();
+    expect(parseEnv({...valid, APP_RELEASE_ROOT: '  /srv/app  '}).APP_RELEASE_ROOT).toBe('/srv/app');
+  });
 });

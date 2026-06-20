@@ -8,6 +8,18 @@ import {compareVersions} from './semver';
  * limit (60/h). No writes, no auth beyond an optional read token.
  */
 
+/** A downloadable file attached to a release (e.g. the standalone bundle). */
+export interface GithubReleaseAsset {
+  /** File name, e.g. "aapanel-manager-standalone-1.2.0.tar.gz". */
+  name: string;
+  /** Direct download URL (browser_download_url). */
+  downloadUrl: string;
+  /** Size in bytes (0 when unknown). */
+  size: number;
+  /** MIME type reported by GitHub, or null. */
+  contentType: string | null;
+}
+
 export interface GithubRelease {
   /** Release tag, e.g. "v1.2.0". */
   version: string;
@@ -18,6 +30,22 @@ export interface GithubRelease {
   prerelease: boolean;
   publishedAt: string | null;
   htmlUrl: string;
+  /** Attached downloadable files (empty when the release has none). */
+  assets: GithubReleaseAsset[];
+}
+
+/** Parses the `assets` array of a raw GitHub release into typed assets. */
+export function parseReleaseAssets(raw: unknown): GithubReleaseAsset[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
+    .map((a) => ({
+      name: typeof a.name === 'string' ? a.name : '',
+      downloadUrl: typeof a.browser_download_url === 'string' ? a.browser_download_url : '',
+      size: typeof a.size === 'number' ? a.size : 0,
+      contentType: typeof a.content_type === 'string' ? a.content_type : null,
+    }))
+    .filter((a) => a.name.length > 0 && a.downloadUrl.length > 0);
 }
 
 export type GithubErrorKind =
@@ -123,6 +151,7 @@ export async function fetchReleases(
         prerelease: r.prerelease === true,
         publishedAt: typeof r.published_at === 'string' ? r.published_at : null,
         htmlUrl: typeof r.html_url === 'string' ? r.html_url : '',
+        assets: parseReleaseAssets(r.assets),
       } satisfies GithubRelease;
     })
     .filter((r) => r.version.length > 0);

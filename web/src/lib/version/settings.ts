@@ -19,6 +19,8 @@ const DEFAULTS: UpdateSettingsView = {
   aapanelProject: null,
   startScript: null,
   serviceName: null,
+  stagedVersion: null,
+  stagedAt: null,
 };
 
 /** Reads the singleton settings (defaults when no row exists yet — no write). */
@@ -34,6 +36,8 @@ export async function getUpdateSettings(): Promise<UpdateSettingsView> {
     aapanelProject: row.aapanelProject,
     startScript: row.startScript,
     serviceName: row.serviceName,
+    stagedVersion: row.stagedVersion,
+    stagedAt: row.stagedAt ? row.stagedAt.toISOString() : null,
   };
 }
 
@@ -68,6 +72,19 @@ export async function saveUpdateSettings(input: SaveUpdateSettingsInput): Promis
     where: {id: SINGLETON_ID},
     create: {id: SINGLETON_ID, ...data, ...tokenData},
     update: {...data, ...tokenData},
+  });
+}
+
+/**
+ * Records (or clears) the staged release version awaiting activation. Pass null
+ * to clear. Upserts the singleton so it works before any settings are saved.
+ */
+export async function setStagedVersion(version: string | null): Promise<void> {
+  const stagedAt = version ? new Date() : null;
+  await prisma.updateSettings.upsert({
+    where: {id: SINGLETON_ID},
+    create: {id: SINGLETON_ID, stagedVersion: version, stagedAt},
+    update: {stagedVersion: version, stagedAt},
   });
 }
 
