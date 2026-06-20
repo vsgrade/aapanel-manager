@@ -20,6 +20,9 @@
 # production
 /build
 
+# self-update release bundle (built by scripts/build-release-bundle.mjs)
+/release-dist/
+
 # misc
 .DS_Store
 *.pem
