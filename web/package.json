@@ -2,6 +2,7 @@
   "name": "web",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "packageManager": "pnpm@11.5.0",
   "scripts": {
     "dev": "node scripts/run-next.mjs dev",
