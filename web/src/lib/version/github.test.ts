@@ -19,6 +19,16 @@ const RELEASE_FIXTURE = [
     prerelease: false,
     published_at: '2026-06-10T10:00:00Z',
     html_url: 'https://github.com/acme/panel/releases/tag/v1.2.0',
+    assets: [
+      {
+        name: 'aapanel-manager-bundle-1.2.0.tar.gz',
+        browser_download_url: 'https://example.test/standalone.tar.gz',
+        size: 1234,
+        content_type: 'application/gzip',
+      },
+      // Malformed entries (missing url/name) must be dropped, not crash.
+      {name: 'broken'},
+    ],
   },
   {
     tag_name: 'v1.3.0-beta.1',
@@ -66,6 +76,14 @@ describe('fetchReleases', () => {
       prerelease: false,
       publishedAt: '2026-06-10T10:00:00Z',
       htmlUrl: 'https://github.com/acme/panel/releases/tag/v1.2.0',
+      assets: [
+        {
+          name: 'aapanel-manager-bundle-1.2.0.tar.gz',
+          downloadUrl: 'https://example.test/standalone.tar.gz',
+          size: 1234,
+          contentType: 'application/gzip',
+        },
+      ],
     });
     // name falls back to tag when empty
     expect(releases[2]!.name).toBe('v1.1.0');
@@ -110,6 +128,6 @@ describe('pickLatestStable', () => {
   });
 
   it('returns null when there is no stable release', () => {
-    expect(pickLatestStable([{version: 'v1.0.0-beta', name: '', body: '', prerelease: true, publishedAt: null, htmlUrl: ''}])).toBeNull();
+    expect(pickLatestStable([{version: 'v1.0.0-beta', name: '', body: '', prerelease: true, publishedAt: null, htmlUrl: '', assets: []}])).toBeNull();
   });
 });

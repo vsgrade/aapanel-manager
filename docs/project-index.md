@@ -73,8 +73,10 @@ Next.js 16 (App Router, RSC, Server Actions) + TS strict + Prisma v7/Postgres + 
 | `web/src/components/servers/detail/directory-picker-dialog.tsx` | Пикер каталога сервера (метод `GetDirNew`) для пути проекта при создании; переиспользуем в будущем разделе «Файлы» |
 | `web/src/components/servers/*` | Таблица (TanStack v8), колонки, статус-бейдж, тулбар, диалоги add/edit/delete |
 | `web/src/app/(app)/servers/{page,loading,error}.tsx` | Маршрут `/servers` (RSC) |
-| `web/src/lib/version/*` | Фича версий: `semver` (сравнение без зависимостей), `current` (версия из `APP_VERSION`/`package.json`), `github` (чтение GitHub Releases, кэш, приватный репо), `types`, `upgrade-command`, `settings` (server-only: настройки + шифрование токена + история версий) |
-| `web/src/server/actions/updates.ts` (+`lib/validation/update-settings.ts`) | Раздел «Версии/обновления»: статус (текущая vs последняя + changelog), чтение/сохранение настроек (способ установки, GitHub-репо, токен) — admin+аудит |
+| `web/src/lib/version/*` | Фича версий: `semver` (сравнение без зависимостей), `current` (версия из `APP_VERSION`/`package.json`), `github` (чтение GitHub Releases + assets, кэш, приватный репо), `types`, `upgrade-command`, `settings` (server-only: настройки + шифрование токена + история версий + `setStagedVersion`) |
+| `web/src/server/actions/updates.ts` (+`lib/validation/update-settings.ts`) | Раздел «Версии/обновления»: статус (текущая vs последняя + changelog, + `stagingSupported`/`bundleAvailable`/`stagedVersion`), чтение/сохранение настроек, **`stageUpdateAction`** (Фаза 2a: скачать+проверить+бэкап+миграции) — admin+аудит |
+| `web/src/lib/deploy/*` | Самообновление панели (Фаза 2a): `adapter` (интерфейс `DeployAdapter`), `aapanel` (preflight+stage), `layout` (пути релизов + защита версии от path-traversal), `bundle-assets` (чистые: поиск asset'ов, parse/верификация sha256), `bundle` (server-only IO: скачать/проверить/`tar`-распаковка), `db-backup` (`pg_dump` через env), `migrate` (прогон `prisma migrate deploy` из бандла), `index` (фабрика). Активация/откат — Фаза 2b |
+| `web/src/app/api/health/route.ts` | Публичная liveness/version-проба `{ok,version,commit,buildTime}` — для проверки «новая версия поднялась» (Фаза 2b) и для надсмотрщиков |
 | `web/src/app/(app)/settings/` + `components/settings/*` | Страница «Настройки» (RSC, admin-only): `update-status-card` (статус/changelog/команда/история), `update-settings-form` (способ установки + источник) |
 | `web/src/lib/users/policy.ts` (+test) | Чистые предикаты безопасности управления пользователями (нельзя удалить себя / разжаловать-удалить последнего администратора) — покрыты юнит-тестами |
 | `web/src/server/actions/users.ts` (+`lib/validation/user.ts`) | Раздел «Пользователи»: список/создание/смена роли/сброс пароля/удаление + смена своего пароля (admin+аудит, argon2, удаление с подтверждением e-mail, lock-out политика `lib/users/policy`) |
@@ -82,7 +84,7 @@ Next.js 16 (App Router, RSC, Server Actions) + TS strict + Prisma v7/Postgres + 
 | `web/src/auth.ts` | Auth.js v5 (Credentials+JWT, роли); `trustHost: true` — самохостинг за reverse-proxy (иначе `UntrustedHost` в проде) |
 | `web/src/components/{theme-provider,theme-toggle}.tsx` | next-themes провайдер + 3-позиционный переключатель тем (светлая/серая-dim/тёмная) в шапке; палитры в `globals.css` |
 | `web/messages/{ru,en}.json` | Строки UI (namespaces `nav`, `servers`, `theme`, `updates`, `users`, …) |
-| `web/prisma/schema.prisma` | Модели: User/Server/ServerStatus/AuditLog + **UpdateSettings** (singleton: способ установки, GitHub-репо, зашифр. токен) + **VersionHistory** (история версий) |
+| `web/prisma/schema.prisma` | Модели: User/Server/ServerStatus/AuditLog + **UpdateSettings** (singleton: способ установки, GitHub-репо, зашифр. токен, **stagedVersion/stagedAt**) + **VersionHistory** (история версий) |
 
 **Безопасность:** `api_sk` шифруется в покое; расшифровка только в Server Actions/фабрике (`server-only`); в кеш-выборку и клиент секрет не попадает; мутации — только admin; все мутации в `AuditLog`.
 

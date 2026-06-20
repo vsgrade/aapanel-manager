@@ -14,8 +14,11 @@ import {isNewer} from '@/lib/version/semver';
 import {buildUpgradeCommand} from '@/lib/version/upgrade-command';
 import {updateSettingsSchema} from '@/lib/validation/update-settings';
 import {listServerOptions, type ServerOption} from '@/lib/servers/query';
-import type {UpdateSettingsView} from '@/lib/version/types';
+import type {UpdateSettingsView, DeploymentMode} from '@/lib/version/types';
 import {recordAudit} from '@/lib/audit';
+import {parseEnv} from '@/env';
+import {getDeployAdapter, type StageStep} from '@/lib/deploy';
+import {findBundleAssets} from '@/lib/deploy/bundle-assets';
 import {log} from '@/log';
 
 // ---------------------------------------------------------------------------
@@ -42,6 +45,14 @@ export type UpdateStatusResult =
       history: {version: string; installedAt: string}[];
       /** Non-fatal GitHub error (network/rate-limit/etc.); current version still shown. */
       error: string | null;
+      /** Configured deployment mode (drives which one-click flow the UI shows). */
+      deploymentMode: DeploymentMode;
+      /** A release that was downloaded+migrated and awaits activation, or null. */
+      stagedVersion: string | null;
+      /** True when one-click staging is wired for this mode + APP_RELEASE_ROOT is set. */
+      stagingSupported: boolean;
+      /** True when the latest release ships a standalone bundle the panel can stage. */
+      bundleAvailable: boolean;
     }
   | {ok: false; message: string};
 
@@ -90,8 +101,17 @@ export async function getUpdateStatusAction(): Promise<UpdateStatusResult> {
   }));
   const configured = Boolean(settings.githubOwner && settings.githubRepo);
 
+  const env = parseEnv();
+  const stagingSupported =
+    Boolean(env.APP_RELEASE_ROOT) && getDeployAdapter(settings.deploymentMode, env.APP_RELEASE_ROOT) !== null;
+  const base = {
+    deploymentMode: settings.deploymentMode,
+    stagedVersion: settings.stagedVersion,
+    stagingSupported,
+  };
+
   if (!configured) {
-    return {ok: true, current, configured: false, latest: null, updateAvailable: false, releases: [], upgradeCommand, history, error: null};
+    return {ok: true, current, configured: false, latest: null, updateAvailable: false, releases: [], upgradeCommand, history, error: null, ...base, bundleAvailable: false};
   }
 
   try {
@@ -108,11 +128,12 @@ export async function getUpdateStatusAction(): Promise<UpdateStatusResult> {
         }
       : null;
     const updateAvailable = latest ? isNewer(latest.version, current.version) : false;
-    return {ok: true, current, configured: true, latest, updateAvailable, releases, upgradeCommand, history, error: null};
+    const bundleAvailable = latestRel ? findBundleAssets(latestRel, latestRel.version) !== null : false;
+    return {ok: true, current, configured: true, latest, updateAvailable, releases, upgradeCommand, history, error: null, ...base, bundleAvailable};
   } catch (err) {
     const message = err instanceof GithubError || err instanceof Error ? err.message : 'Update check failed';
     log.error({err}, 'getUpdateStatusAction GitHub check failed');
-    return {ok: true, current, configured: true, latest: null, updateAvailable: false, releases: [], upgradeCommand, history, error: message};
+    return {ok: true, current, configured: true, latest: null, updateAvailable: false, releases: [], upgradeCommand, history, error: message, ...base, bundleAvailable: false};
   }
 }
 
@@ -151,5 +172,73 @@ export async function saveUpdateSettingsAction(formData: FormData): Promise<Save
     log.error({err}, 'saveUpdateSettingsAction failed');
     await recordAudit({userId, action: 'updates.settings', result: 'error'});
     return {ok: false, error: err instanceof Error ? err.message : 'Failed to save settings'};
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2a — stage an update (download + verify + DB backup + migrate). No
+// self-restart: the staged release is activated separately in Phase 2b.
+// ---------------------------------------------------------------------------
+
+export type StageActionResult =
+  | {ok: true; version: string; steps: StageStep[]; backupPath: string | null}
+  | {ok: false; error: string; steps?: StageStep[]; message?: string};
+
+/**
+ * Downloads, verifies, backs up and migrates the requested release into the
+ * release directory, leaving it ready for activation. Admin only; audited.
+ * `allowBackupSkip` proceeds even when pg_dump is unavailable.
+ */
+export async function stageUpdateAction(
+  targetVersion: string,
+  opts: {allowBackupSkip?: boolean} = {},
+): Promise<StageActionResult> {
+  let userId: string;
+  try {
+    const user = await requireAdmin();
+    userId = user.id;
+  } catch {
+    return {ok: false, error: 'forbidden'};
+  }
+
+  const env = parseEnv();
+  const settings = await getUpdateSettings();
+  const adapter = getDeployAdapter(settings.deploymentMode, env.APP_RELEASE_ROOT);
+  if (!adapter) {
+    return {ok: false, error: 'unsupported-mode'};
+  }
+
+  try {
+    const cfg = await getGithubConfig();
+    const releases = await fetchReleases(cfg);
+    const want = targetVersion.trim().replace(/^v/, '');
+    const release = releases.find((r) => r.version.replace(/^v/, '') === want);
+    if (!release) {
+      return {ok: false, error: 'release-not-found'};
+    }
+
+    const result = await adapter.stage({
+      release,
+      databaseUrl: env.DATABASE_URL,
+      githubToken: cfg.token,
+      allowBackupSkip: opts.allowBackupSkip,
+    });
+
+    await recordAudit({
+      userId,
+      action: 'updates.stage',
+      target: result.version,
+      result: result.ok ? 'ok' : 'error',
+    });
+    revalidatePath('/settings');
+
+    if (result.ok) {
+      return {ok: true, version: result.version, steps: result.steps, backupPath: result.backupPath ?? null};
+    }
+    return {ok: false, error: 'stage-failed', steps: result.steps, message: result.message};
+  } catch (err) {
+    log.error({err}, 'stageUpdateAction failed');
+    await recordAudit({userId, action: 'updates.stage', target: targetVersion, result: 'error'});
+    return {ok: false, error: err instanceof Error ? err.message : 'Staging failed'};
   }
 }

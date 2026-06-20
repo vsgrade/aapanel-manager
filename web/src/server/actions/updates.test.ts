@@ -23,6 +23,7 @@ vi.mock('@/lib/version/current', () => ({
 const settingsMock = vi.hoisted(() => ({
   getUpdateSettings: vi.fn(),
   saveUpdateSettings: vi.fn(async () => undefined),
+  setStagedVersion: vi.fn(async () => undefined),
   getGithubConfig: vi.fn(async () => ({owner: 'acme', repo: 'panel', token: null})),
   getVersionHistory: vi.fn(async () => [] as {version: string; installedAt: Date}[]),
   recordVersionIfNew: vi.fn(async () => undefined),
@@ -35,11 +36,19 @@ vi.mock('@/lib/version/github', async (orig) => {
   return {...actual, fetchReleases: githubMock.fetchReleases};
 });
 
+const deployMock = vi.hoisted(() => ({getDeployAdapter: vi.fn()}));
+vi.mock('@/lib/deploy', () => ({getDeployAdapter: deployMock.getDeployAdapter}));
+
 vi.mock('@/lib/servers/query', () => ({
   listServerOptions: vi.fn(async () => [{id: 's1', name: 'srv', tag: null}]),
 }));
 
-import {getUpdateStatusAction, getUpdateSettingsAction, saveUpdateSettingsAction} from './updates';
+import {
+  getUpdateStatusAction,
+  getUpdateSettingsAction,
+  saveUpdateSettingsAction,
+  stageUpdateAction,
+} from './updates';
 
 const CONFIGURED = {
   deploymentMode: 'docker' as const,
@@ -50,6 +59,8 @@ const CONFIGURED = {
   aapanelProject: null,
   startScript: null,
   serviceName: 'app',
+  stagedVersion: null,
+  stagedAt: null,
 };
 
 beforeEach(() => {
@@ -57,6 +68,8 @@ beforeEach(() => {
   settingsMock.getUpdateSettings.mockResolvedValue(CONFIGURED);
   settingsMock.getVersionHistory.mockResolvedValue([]);
   githubMock.fetchReleases.mockReset();
+  deployMock.getDeployAdapter.mockReset();
+  deployMock.getDeployAdapter.mockReturnValue(null);
 });
 
 describe('getUpdateStatusAction', () => {
@@ -149,5 +162,71 @@ describe('saveUpdateSettingsAction', () => {
     fd.set('deploymentMode', 'docker');
     const res = await saveUpdateSettingsAction(fd);
     expect(res.ok).toBe(false);
+  });
+});
+
+describe('stageUpdateAction', () => {
+  const RELEASE = {
+    version: 'v1.2.0',
+    name: '1.2.0',
+    body: '',
+    prerelease: false,
+    publishedAt: null,
+    htmlUrl: '',
+    assets: [],
+  };
+
+  it('forbids non-admins', async () => {
+    guard.role = 'viewer';
+    const res = await stageUpdateAction('1.2.0');
+    expect(res).toEqual({ok: false, error: 'forbidden'});
+  });
+
+  it('returns unsupported-mode when no adapter exists for the mode', async () => {
+    deployMock.getDeployAdapter.mockReturnValue(null);
+    const res = await stageUpdateAction('1.2.0');
+    expect(res).toEqual({ok: false, error: 'unsupported-mode'});
+  });
+
+  it('returns release-not-found when the version is not among releases', async () => {
+    deployMock.getDeployAdapter.mockReturnValue({mode: 'aapanel', preflight: vi.fn(), stage: vi.fn()});
+    githubMock.fetchReleases.mockResolvedValueOnce([RELEASE]);
+    const res = await stageUpdateAction('9.9.9');
+    expect(res).toEqual({ok: false, error: 'release-not-found'});
+  });
+
+  it('stages the matching release and audits success (v-prefix tolerant)', async () => {
+    const stage = vi.fn(async () => ({
+      ok: true as const,
+      version: '1.2.0',
+      steps: [{name: 'download', ok: true}],
+      backupPath: '/b/pre.sql',
+    }));
+    deployMock.getDeployAdapter.mockReturnValue({mode: 'aapanel', preflight: vi.fn(), stage});
+    githubMock.fetchReleases.mockResolvedValueOnce([RELEASE]);
+
+    const res = await stageUpdateAction('1.2.0');
+    expect(res).toEqual({ok: true, version: '1.2.0', steps: [{name: 'download', ok: true}], backupPath: '/b/pre.sql'});
+    // the v-prefixed release tag matched the un-prefixed request
+    expect(stage).toHaveBeenCalledWith(expect.objectContaining({release: RELEASE}));
+  });
+
+  it('reports a staging failure with its steps', async () => {
+    const stage = vi.fn(async () => ({
+      ok: false as const,
+      version: '1.2.0',
+      steps: [{name: 'verify-checksum', ok: false, detail: 'mismatch'}],
+      message: 'Checksum mismatch',
+    }));
+    deployMock.getDeployAdapter.mockReturnValue({mode: 'aapanel', preflight: vi.fn(), stage});
+    githubMock.fetchReleases.mockResolvedValueOnce([RELEASE]);
+
+    const res = await stageUpdateAction('v1.2.0');
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error).toBe('stage-failed');
+      expect(res.message).toContain('Checksum');
+      expect(res.steps?.[0]?.ok).toBe(false);
+    }
   });
 });

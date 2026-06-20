@@ -74,6 +74,9 @@ model UpdateSettings {
   startScript     String? // project_script from package.json
   // docker / systemd mode:
   serviceName     String? // compose service or pm2/systemd unit name
+  // self-update staging (Phase 2): a downloaded+migrated release awaiting activation.
+  stagedVersion   String?
+  stagedAt        DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

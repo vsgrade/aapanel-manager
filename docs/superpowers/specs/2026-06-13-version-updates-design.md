@@ -127,6 +127,28 @@ model VersionHistory {
 - Формат публикации релизов: Docker-образ в GHCR + standalone-бандл-артефакт.
 - Нужна ли страница «Настройки» как общий контейнер для будущих настроек (да — закладываем расширяемо).
 
+## Фаза 2a — реализовано (детали, режим aaPanel)
+
+Согласовано 2026-06-20: начали с режима **aaPanel Node-проект**. Заход 2a = прерэквизит + **подготовка** обновления, **без самоперезапуска** (активация/откат — 2b). aaPanel выступает «надсмотрщиком»; отдельный процесс не плодим.
+
+**Архитектура (новое):** `lib/deploy/`
+- `adapter.ts` — интерфейс `DeployAdapter` (`preflight()`, `stage(input)`); `activate()/rollback()` добавятся в 2b (без заглушек сейчас).
+- `aapanel.ts` — `AaPanelDeployAdapter`: `stage()` = preflight → найти бандл → скачать → проверить sha256 → атомарно распаковать (`<v>.partial` → rename) → бэкап БД → миграции → пометить `stagedVersion`.
+- `layout.ts` (чистый) — раскладка `<root>/{releases/<v>,current,backups,tmp}`; `sanitizeVersion()` — строгий semver-сегмент (защита от path-traversal); имена asset'ов.
+- `bundle-assets.ts` (чистый, без `server-only`) — поиск asset'ов релиза, parse/`sha256`. Вынесен отдельно, чтобы Server Action импортировал без FS-слоя.
+- `bundle.ts` (server-only IO) — `downloadToFile`, `verifyFileChecksum`, `extractTarGz` (системный `tar`, без новой зависимости).
+- `db-backup.ts` — `pg_dump`; креды через **env дочернего процесса** (`PGPASSWORD`), не через argv (иначе видно в `ps`); `PgDumpNotAvailableError` → блок или явный override.
+- `migrate.ts` — `prisma migrate deploy` из распакованного релиза; миграции **expand/contract** (безопасны при работающем старом коде).
+- `index.ts` — фабрика по `deploymentMode` (сейчас только `aapanel`; прочие → null = «staging не поддержан»).
+
+**Прочее:** `UpdateSettings.stagedVersion/stagedAt` (миграция `add_staged_release`); `env.APP_RELEASE_ROOT` (опц.; пусто → staging выключен); `GithubRelease.assets[]`; `GET /api/health` `{ok,version,commit,buildTime}` (публичный); `stageUpdateAction` (admin+аудит `updates.stage`); статус отдаёт `deploymentMode/stagedVersion/stagingSupported/bundleAvailable`.
+
+**Контракт бандла релиза:** asset `aapanel-manager-bundle-<version>.tar.gz` (+ `.sha256`). Решение (2026-06-20): **полный собранный бандл** (полные `node_modules` вкл. prisma CLI + `.next` + `public` + `prisma/` + `prisma.config.ts` + `package.json`/локфайлы + `next.config.ts` + `scripts/`), а не Next-standalone. Причина: `prisma migrate deploy` работает «из коробки» (как проверенный Docker-worker), сборка надёжна и проверяема в CI; приложение запускается через `next start`. Цена — больший размер скачивания (приемлемо для сервера). Распакованный бандл = рабочая директория релиза (`releases/<v>`), из которой идут и миграции, и запуск.
+
+**Прерэквизит (следующий заход, отдельная проверка в CI):** релизный пайплайн пока публикует только Docker-образы. Сборку **бандла + sha256 + самопроверку в CI** (поднять Postgres, распаковать бандл, реально прогнать `migrate deploy` и `node server.js`→`/api/health`) делаем отдельным заходом, т.к. корректность нельзя проверить на Windows — только в Actions на Ubuntu.
+
+**Статус гейта 2a:** typecheck ✓ · lint ✓ (0 ошибок) · 235 тестов ✓ · build ✓.
+
 ## Разбивка Фазы 1 на задачи
 1. Prisma: `UpdateSettings` + `VersionHistory` + миграция.
 2. `lib/version/semver.ts` + тесты.
