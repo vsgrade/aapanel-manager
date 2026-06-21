@@ -1,11 +1,19 @@
 import 'server-only';
 import path from 'node:path';
-import {mkdir, rm, rename} from 'node:fs/promises';
+import {mkdir, rm, rename, symlink, readlink, stat} from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {log} from '@/log';
-import {setStagedVersion} from '@/lib/version/settings';
-import type {DeployAdapter, PreflightResult, StageInput, StageResult, StageStep} from './adapter';
+import {setStagedVersion, recordActivation} from '@/lib/version/settings';
+import type {
+  DeployAdapter,
+  PreflightResult,
+  StageInput,
+  StageResult,
+  StageStep,
+  ActivateInput,
+  ActivateResult,
+} from './adapter';
 import {releaseLayout, sanitizeVersion, bundleAssetName} from './layout';
 import {findBundleAssets, parseChecksumFile} from './bundle-assets';
 import {downloadToFile, verifyFileChecksum, extractTarGz} from './bundle';
@@ -15,9 +23,11 @@ import {runMigrations} from './migrate';
 const execFileAsync = promisify(execFile);
 
 /**
- * Self-update adapter for the "aaPanel Node project" deployment mode. Phase 2a:
- * download → verify → unpack → DB backup → migrate, all while the OLD code keeps
- * running. The atomic symlink swap + restart-via-aaPanel land in Phase 2b.
+ * Self-update adapter for the "aaPanel Node project" deployment mode.
+ * - stage(): download → verify → unpack → DB backup → migrate, while the OLD
+ *   code keeps running (everything reversible until activation).
+ * - activate()/rollback(): atomically repoint the `current` symlink and restart
+ *   the panel's own Node project via the aaPanel API.
  */
 export class AaPanelDeployAdapter implements DeployAdapter {
   readonly mode = 'aapanel' as const;
@@ -131,6 +141,97 @@ export class AaPanelDeployAdapter implements DeployAdapter {
       return {ok: false, version, steps, backupPath, message};
     }
   }
+
+  async activate(input: ActivateInput): Promise<ActivateResult> {
+    return this.swapAndRestart(input, 'activate');
+  }
+
+  async rollback(input: ActivateInput): Promise<ActivateResult> {
+    return this.swapAndRestart(input, 'rollback');
+  }
+
+  /**
+   * Shared activate/rollback: point `current` at the target release, commit the
+   * DB state, then restart. The restart is LAST because it can kill this process
+   * (aaPanel stops+starts our own Node project) — by then the symlink + DB are
+   * already consistent, so the new process boots correctly.
+   */
+  private async swapAndRestart(input: ActivateInput, kind: 'activate' | 'rollback'): Promise<ActivateResult> {
+    const steps: StageStep[] = [];
+    const record = (name: string, ok: boolean, detail?: string): void => {
+      steps.push({name, ok, detail});
+    };
+    const version = sanitizeVersion(input.version);
+    let previousVersion: string | null = null;
+
+    try {
+      if (!this.releaseRoot) {
+        const msg = 'APP_RELEASE_ROOT is not set';
+        record('preflight', false, msg);
+        return {ok: false, version, previousVersion, steps, message: msg};
+      }
+      const layout = releaseLayout(this.releaseRoot, version);
+
+      // The target release must already be on disk (staged for activate; a prior
+      // release for rollback) — never restart into a missing directory.
+      if (!(await isDir(layout.releaseDir))) {
+        const msg = `Release directory not found: ${layout.releaseDir} (was it staged?)`;
+        record('locate-release', false, msg);
+        return {ok: false, version, previousVersion, steps, message: msg};
+      }
+      record('locate-release', true, layout.releaseDir);
+
+      // The version active right now becomes the rollback target going forward.
+      previousVersion = (await currentTargetVersion(layout.currentLink)) ?? input.runningVersion ?? null;
+
+      // Atomic swap: make a temp symlink → target, then rename it over `current`.
+      await swapSymlink(layout.currentLink, layout.releaseDir);
+      record('swap-current', true, `current → ${version}`);
+
+      // Commit DB state BEFORE the restart so the rebooted process is consistent.
+      await recordActivation(version, previousVersion);
+      record('record', true, kind);
+
+      // Restart LAST — may terminate this process; the caller's UI polls /api/health.
+      await input.restart();
+      record('restart', true, 'restart triggered via aaPanel');
+
+      return {ok: true, version, previousVersion, steps};
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `${kind} failed`;
+      log.error({err, version, kind}, `aapanel ${kind} failed`);
+      record('error', false, message);
+      return {ok: false, version, previousVersion, steps, message};
+    }
+  }
+}
+
+/** True if the path exists and is a directory. */
+async function isDir(p: string): Promise<boolean> {
+  try {
+    return (await stat(p)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** Version (last path segment) the `current` symlink points at, or null. */
+async function currentTargetVersion(currentLink: string): Promise<string | null> {
+  try {
+    const target = await readlink(currentLink);
+    const base = target.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '';
+    return base || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Atomically repoints a symlink: create a temp link, then rename over it. */
+async function swapSymlink(linkPath: string, targetDir: string): Promise<void> {
+  const tmp = `${linkPath}.tmp-${Date.now()}`;
+  await rm(tmp, {force: true}).catch(() => undefined);
+  await symlink(targetDir, tmp);
+  await rename(tmp, linkPath);
 }
 
 async function isTarAvailable(): Promise<boolean> {

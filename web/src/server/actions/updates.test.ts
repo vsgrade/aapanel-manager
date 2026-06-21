@@ -39,6 +39,12 @@ vi.mock('@/lib/version/github', async (orig) => {
 const deployMock = vi.hoisted(() => ({getDeployAdapter: vi.fn()}));
 vi.mock('@/lib/deploy', () => ({getDeployAdapter: deployMock.getDeployAdapter}));
 
+const prismaMock = vi.hoisted(() => ({server: {findUnique: vi.fn()}}));
+vi.mock('@/lib/db/prisma', () => ({prisma: prismaMock}));
+
+const aapanelMock = vi.hoisted(() => ({batchOperation: vi.fn(async () => ({msg: '', msg_list: []}))}));
+vi.mock('@/lib/aapanel', () => ({createClientForServer: vi.fn(() => aapanelMock)}));
+
 vi.mock('@/lib/servers/query', () => ({
   listServerOptions: vi.fn(async () => [{id: 's1', name: 'srv', tag: null}]),
 }));
@@ -48,6 +54,8 @@ import {
   getUpdateSettingsAction,
   saveUpdateSettingsAction,
   stageUpdateAction,
+  activateUpdateAction,
+  rollbackUpdateAction,
 } from './updates';
 
 const CONFIGURED = {
@@ -228,5 +236,80 @@ describe('stageUpdateAction', () => {
       expect(res.message).toContain('Checksum');
       expect(res.steps?.[0]?.ok).toBe(false);
     }
+  });
+});
+
+describe('activateUpdateAction / rollbackUpdateAction', () => {
+  const AAPANEL = {
+    ...CONFIGURED,
+    deploymentMode: 'aapanel' as const,
+    aapanelServerId: 's1',
+    aapanelProject: 'panel',
+    stagedVersion: '1.2.0',
+    previousVersion: '1.0.0',
+  };
+  const okAdapter = (overrides = {}) => ({
+    mode: 'aapanel',
+    preflight: vi.fn(),
+    stage: vi.fn(),
+    activate: vi.fn(async () => ({ok: true, version: '1.2.0', previousVersion: '1.0.0', steps: []})),
+    rollback: vi.fn(async () => ({ok: true, version: '1.0.0', previousVersion: '1.2.0', steps: []})),
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    settingsMock.getUpdateSettings.mockResolvedValue(AAPANEL);
+    deployMock.getDeployAdapter.mockReturnValue(okAdapter());
+    prismaMock.server.findUnique.mockResolvedValue({baseUrl: 'https://p', apiSkEnc: 'enc', insecureTLS: true});
+    aapanelMock.batchOperation.mockClear();
+  });
+
+  it('forbids non-admins', async () => {
+    guard.role = 'viewer';
+    expect((await activateUpdateAction()).ok).toBe(false);
+    expect((await rollbackUpdateAction('1.0.0')).ok).toBe(false);
+  });
+
+  it('errors when nothing is staged', async () => {
+    settingsMock.getUpdateSettings.mockResolvedValue({...AAPANEL, stagedVersion: null});
+    expect(await activateUpdateAction()).toEqual({ok: false, error: 'nothing-staged'});
+  });
+
+  it('errors when aaPanel mode is not fully configured', async () => {
+    settingsMock.getUpdateSettings.mockResolvedValue({...AAPANEL, aapanelProject: null});
+    expect(await activateUpdateAction()).toEqual({ok: false, error: 'aapanel-not-configured'});
+  });
+
+  it('errors when the referenced server no longer exists', async () => {
+    prismaMock.server.findUnique.mockResolvedValue(null);
+    expect(await activateUpdateAction()).toEqual({ok: false, error: 'server-not-found'});
+  });
+
+  it('activates the staged version and wires the aaPanel restart', async () => {
+    const adapter = okAdapter({
+      activate: vi.fn(async (input: {restart: () => Promise<void>}) => {
+        await input.restart(); // adapter triggers the injected restart
+        return {ok: true, version: '1.2.0', previousVersion: '1.0.0', steps: []};
+      }),
+    });
+    deployMock.getDeployAdapter.mockReturnValue(adapter);
+
+    const res = await activateUpdateAction();
+    expect(res.ok).toBe(true);
+    expect(adapter.activate).toHaveBeenCalledWith(
+      expect.objectContaining({version: '1.2.0', runningVersion: '1.0.0'}),
+    );
+    // the injected restart bounces the panel's own project via aaPanel
+    expect(aapanelMock.batchOperation).toHaveBeenCalledWith(['panel'], 'restart');
+  });
+
+  it('rolls back to the requested version', async () => {
+    const res = await rollbackUpdateAction('v1.0.0');
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.version).toBe('1.0.0');
+  });
+
+  it('rejects an empty rollback target', async () => {
+    expect(await rollbackUpdateAction('   ')).toEqual({ok: false, error: 'no-target'});
   });
 });

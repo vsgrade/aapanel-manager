@@ -30,7 +30,7 @@
 - Разделы (Фаза 5): [Базы данных](superpowers/plans/2026-06-09-phase-5a-databases.md) — `/servers/[id]/databases`
 - Маршрут серверов: `web/src/app/(app)/servers/page.tsx` · Server Actions: `web/src/server/actions/servers.ts` · клиент панели: `web/src/lib/aapanel/`
 - Версии/обновления (admin): `web/src/app/(app)/settings/` · экшены `web/src/server/actions/updates.ts` · логика `web/src/lib/version/`
-- Самообновление (Фаза 2a, режим aaPanel): `web/src/lib/deploy/` (адаптер + stage: скачать/проверить/бэкап/миграции) · health `web/src/app/api/health/route.ts` · env `APP_RELEASE_ROOT`. Активация/откат — Фаза 2b
+- Самообновление (режим aaPanel): `web/src/lib/deploy/` (stage — скачать/проверить/бэкап/миграции; activate/rollback — своп симлинка `current` + рестарт своего проекта через aaPanel API) · действия `web/src/server/actions/updates.ts` (`stage/activate/rollback`) · health `web/src/app/api/health/route.ts` · релиз-бандл `web/scripts/{build,smoke}-release-bundle.mjs` · env `APP_RELEASE_ROOT`. Осталось: UI-кнопки + дока настройки
 - Пользователи (admin): `web/src/app/(app)/users/` · экшены `web/src/server/actions/users.ts` · политика `web/src/lib/users/policy.ts` · валидация `web/src/lib/validation/user.ts`
 - Live: воркер `web/src/worker/` · сервис статуса `web/src/lib/servers/status.ts` · realtime `web/src/lib/realtime/` · SSE `web/src/app/api/sse/servers/route.ts`
 

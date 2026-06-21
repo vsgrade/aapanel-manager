@@ -145,9 +145,32 @@ model VersionHistory {
 
 **Контракт бандла релиза:** asset `aapanel-manager-bundle-<version>.tar.gz` (+ `.sha256`). Решение (2026-06-20): **полный собранный бандл** (полные `node_modules` вкл. prisma CLI + `.next` + `public` + `prisma/` + `prisma.config.ts` + `package.json`/локфайлы + `next.config.ts` + `scripts/`), а не Next-standalone. Причина: `prisma migrate deploy` работает «из коробки» (как проверенный Docker-worker), сборка надёжна и проверяема в CI; приложение запускается через `next start`. Цена — больший размер скачивания (приемлемо для сервера). Распакованный бандл = рабочая директория релиза (`releases/<v>`), из которой идут и миграции, и запуск.
 
-**Прерэквизит (следующий заход, отдельная проверка в CI):** релизный пайплайн пока публикует только Docker-образы. Сборку **бандла + sha256 + самопроверку в CI** (поднять Postgres, распаковать бандл, реально прогнать `migrate deploy` и `node server.js`→`/api/health`) делаем отдельным заходом, т.к. корректность нельзя проверить на Windows — только в Actions на Ubuntu.
+**Прерэквизит — СДЕЛАНО (PR #1, в `main`):** релизный пайплайн собирает бандл + `.sha256` и **самопроверяет** его в CI (job `release-bundle`: Postgres → распаковка → `prisma migrate deploy` из бандла → `next start` → `/api/health`). Скрипты `web/scripts/{build,smoke}-release-bundle.mjs`; `release.yml` прикладывает бандл к релизу после smoke. Проверено зелёным прогоном CI.
 
-**Статус гейта 2a:** typecheck ✓ · lint ✓ (0 ошибок) · 235 тестов ✓ · build ✓.
+**Статус гейта 2a:** typecheck ✓ · lint ✓ (0 ошибок) · 235 тестов ✓ · build ✓ · CI (включая bundle-smoke) ✓.
+
+## Фаза 2b — реализовано (backend; UI — следующим заходом)
+
+Активация подготовленного релиза и откат, режим aaPanel.
+
+- **`DeployAdapter`** дополнен `activate(input)` + `rollback(input)`; `aapanel.ts` реализует через общий `swapAndRestart`:
+  1. проверка, что целевая `releases/<v>` существует (не перезапускаемся в пустоту);
+  2. определить текущую версию (цель будущего отката) — из симлинка `current`, иначе `runningVersion`;
+  3. **атомарный своп**: временный симлинк → `releases/<v>`, затем `rename` поверх `current`;
+  4. `recordActivation(v, previous)` — `VersionHistory` + `previousVersion` + очистка `staged` (транзакция, ДО рестарта);
+  5. **рестарт последним** — `input.restart()` (может убить процесс).
+- **Перезапуск себя** инъектируется как `restart()` (не зашит → тестируемо): действие строит `createClientForServer(server).batchOperation([project],'restart')` — рестарт **своего** Node-проекта через aaPanel API.
+- **Действия** (admin + аудит): `activateUpdateAction()` (берёт `stagedVersion`), `rollbackUpdateAction(toVersion)`; `prepareSelfRestart()` валидирует режим/конфиг/наличие сервера.
+- **Prisma**: `UpdateSettings.previousVersion` (миграция `add_previous_version`); `recordActivation` в `settings.ts`.
+- **Тесты**: `aapanel.test.ts` (порядок swap→record→restart; нет рестарта без релиза; откат; нет root) + действия.
+
+**Одноразовая настройка деплоя (оператор; полная дока — с UI):** проект в aaPanel запускается из `<APP_RELEASE_ROOT>/current` (симлинк → `releases/<стартовая-версия>`); команда запуска = `next start`; `APP_VERSION` = текущая версия. Тогда «Применить»/«Откатить» лишь переключают симлинк и дёргают рестарт.
+
+**Ограничение v1 (честно):** если новая версия совсем не стартует, кнопку отката в панели не нажать → откат вручную на сервере (переключить `current` + рестарт). Авто-откат по неудачному health — поздний заход (watchdog, переживающий рестарт).
+
+**Осталось по 2b:** UI-кнопки «Подготовить → Применить / Откатить» в `/settings` (подтверждения + поллинг `/api/health`) + i18n + полная дока настройки.
+
+**Статус гейта 2b backend:** typecheck ✓ · lint ✓ (0 ошибок) · 252 теста ✓ · build ✓.
 
 ## Разбивка Фазы 1 на задачи
 1. Prisma: `UpdateSettings` + `VersionHistory` + миграция.

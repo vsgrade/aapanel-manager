@@ -17,4 +17,6 @@ export interface UpdateSettingsView {
   stagedVersion: string | null;
   /** ISO timestamp when the staged release was prepared, or null. */
   stagedAt: string | null;
+  /** Version active before the last activation — the rollback target, or null. */
+  previousVersion: string | null;
 }

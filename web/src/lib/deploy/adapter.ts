@@ -39,10 +39,34 @@ export interface StageInput {
   allowBackupSkip?: boolean;
 }
 
+export interface ActivateInput {
+  /** The already-staged version to activate (or the target version to roll back to). */
+  version: string;
+  /** The version running right now (becomes the rollback target after activation). */
+  runningVersion: string;
+  /**
+   * Restarts the panel so it boots the newly-pointed release. Injected by the
+   * caller (aaPanel API restart of the panel's own Node project) so the adapter
+   * stays testable. May not return — the restart can kill this process — so it
+   * is called LAST, after the symlink swap and DB writes are committed.
+   */
+  restart: () => Promise<void>;
+}
+
+export interface ActivateResult {
+  ok: boolean;
+  version: string;
+  /** The version that was active before this activation (rollback target). */
+  previousVersion: string | null;
+  steps: StageStep[];
+  message?: string;
+}
+
 /**
  * A deployment adapter encapsulates how the panel updates itself for one
- * installation mode. Phase 2a implements detection + staging (download, verify,
- * backup, migrate) with no self-restart; activation/rollback land in Phase 2b.
+ * installation mode.
+ * - Phase 2a: detection + staging (download, verify, backup, migrate).
+ * - Phase 2b: activation (atomic release swap + restart) and rollback.
  */
 export interface DeployAdapter {
   readonly mode: DeploymentMode;
@@ -50,4 +74,8 @@ export interface DeployAdapter {
   preflight(): Promise<PreflightResult>;
   /** Downloads + verifies + unpacks the release and applies migrations. */
   stage(input: StageInput): Promise<StageResult>;
+  /** Points `current` at the staged release and restarts (Phase 2b). */
+  activate(input: ActivateInput): Promise<ActivateResult>;
+  /** Points `current` back at a previous release and restarts (Phase 2b). */
+  rollback(input: ActivateInput): Promise<ActivateResult>;
 }
