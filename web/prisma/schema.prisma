@@ -77,6 +77,8 @@ model UpdateSettings {
   // self-update staging (Phase 2): a downloaded+migrated release awaiting activation.
   stagedVersion   String?
   stagedAt        DateTime?
+  // version the `current` symlink pointed to before the last activation (rollback target).
+  previousVersion String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

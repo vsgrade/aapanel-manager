@@ -17,8 +17,10 @@ import {listServerOptions, type ServerOption} from '@/lib/servers/query';
 import type {UpdateSettingsView, DeploymentMode} from '@/lib/version/types';
 import {recordAudit} from '@/lib/audit';
 import {parseEnv} from '@/env';
-import {getDeployAdapter, type StageStep} from '@/lib/deploy';
+import {getDeployAdapter, type StageStep, type DeployAdapter} from '@/lib/deploy';
 import {findBundleAssets} from '@/lib/deploy/bundle-assets';
+import {createClientForServer} from '@/lib/aapanel';
+import {prisma} from '@/lib/db/prisma';
 import {log} from '@/log';
 
 // ---------------------------------------------------------------------------
@@ -240,5 +242,108 @@ export async function stageUpdateAction(
     log.error({err}, 'stageUpdateAction failed');
     await recordAudit({userId, action: 'updates.stage', target: targetVersion, result: 'error'});
     return {ok: false, error: err instanceof Error ? err.message : 'Staging failed'};
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2b — activate a staged release / roll back. Repoints the `current`
+// symlink and restarts the panel's own Node project via the aaPanel API.
+// ---------------------------------------------------------------------------
+
+export type ActivateActionResult =
+  | {ok: true; version: string; previousVersion: string | null; steps: StageStep[]}
+  | {ok: false; error: string; steps?: StageStep[]; message?: string};
+
+/**
+ * Builds the aaPanel adapter plus a restart() that bounces the panel's OWN Node
+ * project through the aaPanel API. Validates the aaPanel mode is fully
+ * configured and the referenced server still exists.
+ */
+async function prepareSelfRestart(): Promise<
+  | {ok: true; adapter: DeployAdapter; restart: () => Promise<void>; runningVersion: string; settings: UpdateSettingsView}
+  | {ok: false; error: string}
+> {
+  const env = parseEnv();
+  const settings = await getUpdateSettings();
+  const adapter = getDeployAdapter(settings.deploymentMode, env.APP_RELEASE_ROOT);
+  if (!adapter) return {ok: false, error: 'unsupported-mode'};
+  if (!settings.aapanelServerId || !settings.aapanelProject) {
+    return {ok: false, error: 'aapanel-not-configured'};
+  }
+  const server = await prisma.server.findUnique({
+    where: {id: settings.aapanelServerId},
+    select: {baseUrl: true, apiSkEnc: true, insecureTLS: true},
+  });
+  if (!server) return {ok: false, error: 'server-not-found'};
+  const project = settings.aapanelProject;
+  const restart = async (): Promise<void> => {
+    await createClientForServer(server).batchOperation([project], 'restart');
+  };
+  return {ok: true, adapter, restart, runningVersion: getCurrentVersion().version, settings};
+}
+
+/** Activates the staged release (atomic symlink swap + self-restart). Admin only; audited. */
+export async function activateUpdateAction(): Promise<ActivateActionResult> {
+  let userId: string;
+  try {
+    userId = (await requireAdmin()).id;
+  } catch {
+    return {ok: false, error: 'forbidden'};
+  }
+
+  const prep = await prepareSelfRestart();
+  if (!prep.ok) return {ok: false, error: prep.error};
+
+  const version = prep.settings.stagedVersion;
+  if (!version) return {ok: false, error: 'nothing-staged'};
+
+  try {
+    const result = await prep.adapter.activate({
+      version,
+      runningVersion: prep.runningVersion,
+      restart: prep.restart,
+    });
+    await recordAudit({userId, action: 'updates.activate', target: result.version, result: result.ok ? 'ok' : 'error'});
+    revalidatePath('/settings');
+    return result.ok
+      ? {ok: true, version: result.version, previousVersion: result.previousVersion, steps: result.steps}
+      : {ok: false, error: 'activate-failed', steps: result.steps, message: result.message};
+  } catch (err) {
+    log.error({err}, 'activateUpdateAction failed');
+    await recordAudit({userId, action: 'updates.activate', target: version, result: 'error'});
+    return {ok: false, error: err instanceof Error ? err.message : 'Activation failed'};
+  }
+}
+
+/** Rolls back to a previously-installed release directory (symlink swap + self-restart). */
+export async function rollbackUpdateAction(toVersion: string): Promise<ActivateActionResult> {
+  let userId: string;
+  try {
+    userId = (await requireAdmin()).id;
+  } catch {
+    return {ok: false, error: 'forbidden'};
+  }
+
+  const target = toVersion.trim().replace(/^v/, '');
+  if (!target) return {ok: false, error: 'no-target'};
+
+  const prep = await prepareSelfRestart();
+  if (!prep.ok) return {ok: false, error: prep.error};
+
+  try {
+    const result = await prep.adapter.rollback({
+      version: target,
+      runningVersion: prep.runningVersion,
+      restart: prep.restart,
+    });
+    await recordAudit({userId, action: 'updates.rollback', target: result.version, result: result.ok ? 'ok' : 'error'});
+    revalidatePath('/settings');
+    return result.ok
+      ? {ok: true, version: result.version, previousVersion: result.previousVersion, steps: result.steps}
+      : {ok: false, error: 'rollback-failed', steps: result.steps, message: result.message};
+  } catch (err) {
+    log.error({err}, 'rollbackUpdateAction failed');
+    await recordAudit({userId, action: 'updates.rollback', target, result: 'error'});
+    return {ok: false, error: err instanceof Error ? err.message : 'Rollback failed'};
   }
 }

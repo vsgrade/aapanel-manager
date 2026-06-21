@@ -3,7 +3,15 @@ import type {DeploymentMode} from '@/lib/version/types';
 import type {DeployAdapter} from './adapter';
 import {AaPanelDeployAdapter} from './aapanel';
 
-export type {DeployAdapter, PreflightResult, StageInput, StageResult, StageStep} from './adapter';
+export type {
+  DeployAdapter,
+  PreflightResult,
+  StageInput,
+  StageResult,
+  StageStep,
+  ActivateInput,
+  ActivateResult,
+} from './adapter';
 
 /**
  * Returns the staging adapter for a deployment mode, or null when staging isn't

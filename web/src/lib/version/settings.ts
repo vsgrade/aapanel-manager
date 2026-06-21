@@ -21,6 +21,7 @@ const DEFAULTS: UpdateSettingsView = {
   serviceName: null,
   stagedVersion: null,
   stagedAt: null,
+  previousVersion: null,
 };
 
 /** Reads the singleton settings (defaults when no row exists yet — no write). */
@@ -38,6 +39,7 @@ export async function getUpdateSettings(): Promise<UpdateSettingsView> {
     serviceName: row.serviceName,
     stagedVersion: row.stagedVersion,
     stagedAt: row.stagedAt ? row.stagedAt.toISOString() : null,
+    previousVersion: row.previousVersion,
   };
 }
 
@@ -86,6 +88,23 @@ export async function setStagedVersion(version: string | null): Promise<void> {
     create: {id: SINGLETON_ID, stagedVersion: version, stagedAt},
     update: {stagedVersion: version, stagedAt},
   });
+}
+
+/**
+ * Records an activation (or rollback) of a release: appends it to the version
+ * history, stores the version that was active before it (the rollback target),
+ * and clears any staged marker. Done before the restart so the new process sees
+ * the correct state on boot.
+ */
+export async function recordActivation(activatedVersion: string, previousVersion: string | null): Promise<void> {
+  await prisma.$transaction([
+    prisma.updateSettings.upsert({
+      where: {id: SINGLETON_ID},
+      create: {id: SINGLETON_ID, previousVersion, stagedVersion: null, stagedAt: null},
+      update: {previousVersion, stagedVersion: null, stagedAt: null},
+    }),
+    prisma.versionHistory.create({data: {version: activatedVersion}}),
+  ]);
 }
 
 /** Server-only: GitHub config with the decrypted token (for release checks). */
