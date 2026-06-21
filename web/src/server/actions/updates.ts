@@ -51,6 +51,8 @@ export type UpdateStatusResult =
       deploymentMode: DeploymentMode;
       /** A release that was downloaded+migrated and awaits activation, or null. */
       stagedVersion: string | null;
+      /** The version active before the last activation — the rollback target, or null. */
+      previousVersion: string | null;
       /** True when one-click staging is wired for this mode + APP_RELEASE_ROOT is set. */
       stagingSupported: boolean;
       /** True when the latest release ships a standalone bundle the panel can stage. */
@@ -109,6 +111,7 @@ export async function getUpdateStatusAction(): Promise<UpdateStatusResult> {
   const base = {
     deploymentMode: settings.deploymentMode,
     stagedVersion: settings.stagedVersion,
+    previousVersion: settings.previousVersion,
     stagingSupported,
   };
 
