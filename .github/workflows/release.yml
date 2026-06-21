@@ -1,9 +1,9 @@
 name: Release
 
 # Cut a release by pushing a semver tag, e.g. `git tag v0.1.0 && git push origin v0.1.0`.
-# Produces: Docker images in GHCR (app + worker), a self-update bundle
-# (aapanel-manager-bundle-<v>.tar.gz + .sha256) attached to the GitHub Release,
-# and the Release entry itself (read by the in-app update check + self-update).
+# Produces: a single Docker image in GHCR (migrates on start, then serves), a
+# self-update bundle (aapanel-manager-bundle-<v>.tar.gz + .sha256) attached to
+# the GitHub Release, and the Release entry itself (read by the in-app updater).
 on:
   push:
     tags: ["v*"]
@@ -64,7 +64,7 @@ jobs:
       - name: Smoke-test the bundle (migrate + boot + /api/health)
         run: node scripts/smoke-release-bundle.mjs "$(ls release-dist/aapanel-manager-bundle-*.tar.gz)"
 
-      # ── Docker images ─────────────────────────────────────────────────────────
+      # ── Docker image (single: migrates on start, then serves) ──────────────────
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -85,19 +85,6 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.version }}
             ghcr.io/${{ github.repository }}:latest
-
-      - name: Build & push worker image
-        uses: docker/build-push-action@v6
-        with:
-          context: web
-          target: worker
-          push: true
-          build-args: |
-            APP_VERSION=${{ steps.ver.outputs.version }}
-            APP_COMMIT=${{ github.sha }}
-          tags: |
-            ghcr.io/${{ github.repository }}-worker:${{ steps.ver.outputs.version }}
-            ghcr.io/${{ github.repository }}-worker:latest
 
       # ── GitHub Release (with the verified self-update bundle attached) ─────────
       - name: Create GitHub Release

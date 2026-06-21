@@ -24,7 +24,7 @@
 
 - 🖥️ **Multi-server** — add / edit / remove aaPanel servers; `api_sk` encrypted at rest (AES-256-GCM)
 - 🟢 **Node.js projects** — list, status, info, logs, start / stop / restart, create / modify / delete
-- 📊 **Live monitoring** — CPU / RAM / disk with auto-refresh (background worker + Server-Sent Events)
+- 📊 **Live monitoring** — CPU / RAM / disk with auto-refresh (in-process polling + Server-Sent Events)
 - 👥 **Users & roles** — admin / viewer, user management, self password change
 - 🔒 **Secure by design** — backend proxy; secrets never reach the browser; audit log of every change
 - 🌐 **i18n & themes** — English / Russian, light / dark
@@ -40,7 +40,7 @@
 
 ## Tech stack
 
-Next.js 16 (App Router · React Server Components · Server Actions) · React 19 · TypeScript · Prisma 7 + PostgreSQL · Auth.js v5 · Tailwind v4 · Docker (standalone).
+Next.js 16 (App Router · React Server Components · Server Actions) · React 19 · TypeScript · Prisma 7 + PostgreSQL · Auth.js v5 · Tailwind v4 · Docker.
 
 ## Quick start (development)
 
@@ -115,7 +115,7 @@ Undocumented feature? Open the panel → DevTools (Network) → click it → ins
 
 - [x] Multi-server management (encrypted `api_sk`, test connection, audit log)
 - [x] Node.js projects (CRUD + control + logs)
-- [x] Live monitoring (background worker + SSE)
+- [x] Live monitoring (in-process polling + SSE)
 - [x] Users & roles, authentication
 - [x] Version display + update settings
 - [ ] Databases / Files / FTP / Cron / Firewall sections in the app

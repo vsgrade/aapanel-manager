@@ -115,3 +115,55 @@ jobs:
         run: node scripts/build-release-bundle.mjs
       - name: Smoke-test the bundle (migrate + boot + /api/health)
         run: node scripts/smoke-release-bundle.mjs "$(ls release-dist/aapanel-manager-bundle-*.tar.gz)"
+
+  # Builds the single production Docker image and proves it works end-to-end:
+  # the entrypoint runs `prisma migrate deploy` on start, then `next start`; we
+  # hit /api/health. Verifies migrate-on-start + the consolidated image (the part
+  # that can't be checked on a Windows dev box).
+  docker-image:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aapanel_docker
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the production image
+        run: docker build --target runner --build-arg APP_VERSION=ci -t aapanel-manager:ci web
+
+      - name: Run it (migrate-on-start + serve, host network → Postgres service)
+        run: |
+          docker run -d --name app --network host \
+            -e DATABASE_URL='postgresql://postgres:postgres@localhost:5432/aapanel_docker?schema=public' \
+            -e AUTH_SECRET='ci-only-not-a-real-secret-0123456789abcd' \
+            -e APP_ENCRYPTION_KEY='0000000000000000000000000000000000000000000000000000000000000000' \
+            -e APP_VERSION='ci' \
+            -e ENABLE_POLLER='false' \
+            aapanel-manager:ci
+
+      - name: Wait for /api/health to report the image version
+        run: |
+          for i in $(seq 1 60); do
+            sleep 3
+            body=$(curl -fsS http://localhost:3000/api/health 2>/dev/null || true)
+            echo "poll $i: $body"
+            if printf '%s' "$body" | grep -q '"version":"ci"'; then echo "image healthy"; exit 0; fi
+          done
+          echo "::error::/api/health never reported version=ci"; docker logs app; exit 1
+
+      - name: Container logs
+        if: always()
+        run: docker logs app || true

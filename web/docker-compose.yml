@@ -1,18 +1,14 @@
-# Compose: Postgres + migrate (one-shot) + app.
-#
-# Start order:
-#   postgres (health-checked) → migrate (one-shot) → app
+# Compose: Postgres + app (single image).
 #
 # Usage:
 #   cp .env.example .env   # fill in DATABASE_URL, AUTH_SECRET, APP_ENCRYPTION_KEY …
 #   docker compose up --build
 #
-# The `migrate` service runs `pnpm prisma migrate deploy` once and exits (restart: no).
-# `app` waits for it to complete successfully before starting.
-#
-# The app polls aaPanel servers in-process (see src/instrumentation.ts). A
-# Postgres advisory lock makes it safe to scale `app` to several replicas —
-# exactly one of them polls. No separate worker service is required.
+# The `app` image applies DB migrations on start (its entrypoint runs
+# `prisma migrate deploy`, then `next start`) — no separate migrate/worker
+# service. The app also polls aaPanel servers in-process (src/instrumentation.ts);
+# a Postgres advisory lock makes it safe to scale `app` to several replicas —
+# exactly one of them polls, and concurrent migrate-on-start runs serialize.
 
 services:
   postgres:
@@ -30,25 +26,6 @@ services:
       retries: 10
       start_period: 10s
 
-  # ── One-shot migration runner ────────────────────────────────────────────────
-  # Uses the `worker` build stage which has the full source tree + prisma CLI.
-  # Exits with code 0 on success; app + worker will not start until it succeeds.
-  migrate:
-    build:
-      context: .
-      target: worker
-    env_file: .env
-    environment:
-      NODE_ENV: production
-    command: ["pnpm", "prisma", "migrate", "deploy"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
-  # ── Web application ──────────────────────────────────────────────────────────
-  # Runs the Next.js standalone server (node server.js).
-  # Waits for migrations to complete before starting so the schema is in place.
   app:
     build:
       context: .
@@ -60,9 +37,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    command: ["node", "server.js"]
     restart: unless-stopped
 
 volumes:
