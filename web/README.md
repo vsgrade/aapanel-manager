@@ -135,13 +135,15 @@ sudo journalctl -fu aapanel-web   # follow logs
 
 ## Run mode 3 — Docker Compose
 
-`docker-compose.yml` starts three containers in the correct order:
+`docker-compose.yml` starts two containers:
 
 ```
 postgres (health-checked)
-  └─► migrate (one-shot, exits 0)
-        └─► app   (Next.js standalone + in-process poller, :3000)
+  └─► app   (runs `prisma migrate deploy` on start, then serves + polls, :3000)
 ```
+
+A single image: its entrypoint applies pending migrations, then runs the server.
+There is no separate migrate/worker container.
 
 ```bash
 # 1. Fill in DATABASE_URL, AUTH_SECRET, APP_ENCRYPTION_KEY (+ POSTGRES_PASSWORD) in .env
@@ -170,13 +172,13 @@ WORKER_CONCURRENCY=16
 ENABLE_POLLER=true
 ```
 
-> **Note:** the `migrate` service uses the `worker` build stage (full source +
-> Prisma CLI).  The `app` service uses the `runner` build stage (Next.js
-> standalone, ~3× smaller) and polls in-process.  Both are built from the same
-> `Dockerfile`.
+> **Note:** one image (the `runner` stage) carries the full `node_modules`
+> (incl. the Prisma CLI), so its entrypoint runs `prisma migrate deploy` on start
+> and then `next start`. No separate migrate/worker container.
 >
 > **Scaling:** run several `app` replicas if needed — a Postgres advisory lock
-> means exactly one polls. No separate worker service is required.
+> means exactly one polls, and concurrent migrate-on-start runs serialize
+> (Prisma locks migrations), so replicas are safe.
 
 ---
 
