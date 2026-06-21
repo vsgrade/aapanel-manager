@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/card';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
+import {UpdateActions} from './update-actions';
 
 /** Deterministic timestamp (no locale/timezone) to avoid SSR/CSR hydration drift. */
 function fmt(iso: string): string {
@@ -116,6 +117,18 @@ export function UpdateStatusCard({initial}: {initial: UpdateStatusResult}) {
               </a>
             ) : null}
           </details>
+        ) : null}
+
+        {s.stagingSupported ? (
+          <UpdateActions
+            bundleAvailable={s.bundleAvailable}
+            updateAvailable={s.updateAvailable}
+            latestVersion={s.latest?.version ?? null}
+            stagedVersion={s.stagedVersion}
+            previousVersion={s.previousVersion}
+            currentVersion={s.current.version}
+            onChanged={refresh}
+          />
         ) : null}
 
         <div className="space-y-1.5">
