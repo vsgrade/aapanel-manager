@@ -1,5 +1,5 @@
 /** How the panel is installed — determines how it restarts/updates itself. */
-export const DEPLOYMENT_MODES = ['docker', 'systemd', 'aapanel', 'manual'] as const;
+export const DEPLOYMENT_MODES = ['docker', 'systemd', 'aapanel', 'git', 'manual'] as const;
 export type DeploymentMode = (typeof DEPLOYMENT_MODES)[number];
 
 /** Settings view returned to the client — never includes the raw GitHub token. */

@@ -23,6 +23,10 @@ out/
 *.log
 *.tmp
 
+# Самообновление (git-режим): per-instance runtime-артефакты — не коммитить
+.update.lock
+.update-backups/
+
 # Артефакты MCP-браузера (скриншоты, снапшоты)
 .playwright-mcp/
 

@@ -99,6 +99,7 @@ export function UpdateStatusCard({initial}: {initial: UpdateStatusResult}) {
 
         {/* One-click update / rollback — always shown (buttons disable when not applicable) */}
         <UpdateActions
+          deploymentMode={s.deploymentMode}
           stagingSupported={s.stagingSupported}
           selfRestartConfigured={s.selfRestartConfigured}
           bundleAvailable={s.bundleAvailable}

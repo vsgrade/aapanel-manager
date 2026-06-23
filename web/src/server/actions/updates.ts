@@ -19,6 +19,7 @@ import {recordAudit} from '@/lib/audit';
 import {parseEnv} from '@/env';
 import {getDeployAdapter, type StageStep, type DeployAdapter} from '@/lib/deploy';
 import {findBundleAssets} from '@/lib/deploy/bundle-assets';
+import {gitRepoRoot, updatePaths, acquireUpdateLock, releaseUpdateLock, launchGitUpdate} from '@/lib/deploy/git';
 import {createClientForServer} from '@/lib/aapanel';
 import {log} from '@/log';
 
@@ -345,5 +346,86 @@ export async function rollbackUpdateAction(toVersion: string): Promise<ActivateA
     log.error({err}, 'rollbackUpdateAction failed');
     await recordAudit({userId, action: 'updates.rollback', target, result: 'error'});
     return {ok: false, error: err instanceof Error ? err.message : 'Rollback failed'};
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Git deployment mode — update/rollback in place: a detached runner does
+// git fetch + checkout + install + migrate + build, then restarts the panel's
+// own Node project via the aaPanel API. The action only validates + launches;
+// the heavy work and the restart happen in the detached process (it outlives
+// the restart). The UI then polls /api/health for the target version.
+// ---------------------------------------------------------------------------
+
+export type GitDeployActionResult = {ok: true; target: string} | {ok: false; error: string};
+
+/** Validates git mode + self-restart + repo, takes the lock, launches the runner. */
+async function launchGitDeploy(kind: 'update' | 'rollback', target: string): Promise<GitDeployActionResult> {
+  const settings = await getUpdateSettings();
+  if (settings.deploymentMode !== 'git') return {ok: false, error: 'unsupported-mode'};
+  if (!(await getSelfRestartConfig())) return {ok: false, error: 'self-restart-not-configured'};
+
+  const webDir = process.cwd();
+  const repoRoot = await gitRepoRoot(webDir);
+  if (!repoRoot) return {ok: false, error: 'not-a-git-repo'};
+
+  const paths = updatePaths(repoRoot);
+  const now = Date.now();
+  if (!acquireUpdateLock(paths.lock, {kind, target, startedAt: now}, now)) {
+    return {ok: false, error: 'update-in-progress'};
+  }
+  try {
+    launchGitUpdate({webDir, logPath: paths.log, kind, target});
+  } catch (err) {
+    releaseUpdateLock(paths.lock); // launch failed — don't leave a stuck lock
+    throw err;
+  }
+  return {ok: true, target};
+}
+
+/** Git mode: update in place to the latest stable release. Admin only; audited. */
+export async function gitUpdateAction(): Promise<GitDeployActionResult> {
+  let userId: string;
+  try {
+    userId = (await requireAdmin()).id;
+  } catch {
+    return {ok: false, error: 'forbidden'};
+  }
+  try {
+    const cfg = await getGithubConfig();
+    const releases = await fetchReleases(cfg);
+    const latest = pickLatestStable(releases);
+    if (!latest) return {ok: false, error: 'release-not-found'};
+    const target = latest.version.replace(/^v/, '');
+    if (!isNewer(target, getCurrentVersion().version)) return {ok: false, error: 'up-to-date'};
+
+    const res = await launchGitDeploy('update', target);
+    await recordAudit({userId, action: 'updates.git-update', target, result: res.ok ? 'ok' : 'error'});
+    return res;
+  } catch (err) {
+    log.error({err}, 'gitUpdateAction failed');
+    await recordAudit({userId, action: 'updates.git-update', result: 'error'});
+    return {ok: false, error: err instanceof Error ? err.message : 'Git update failed'};
+  }
+}
+
+/** Git mode: roll back in place to a previous release tag. Admin only; audited. */
+export async function gitRollbackAction(toVersion: string): Promise<GitDeployActionResult> {
+  let userId: string;
+  try {
+    userId = (await requireAdmin()).id;
+  } catch {
+    return {ok: false, error: 'forbidden'};
+  }
+  const target = toVersion.trim().replace(/^v/, '');
+  if (!target) return {ok: false, error: 'no-target'};
+  try {
+    const res = await launchGitDeploy('rollback', target);
+    await recordAudit({userId, action: 'updates.git-rollback', target, result: res.ok ? 'ok' : 'error'});
+    return res;
+  } catch (err) {
+    log.error({err}, 'gitRollbackAction failed');
+    await recordAudit({userId, action: 'updates.git-rollback', target, result: 'error'});
+    return {ok: false, error: err instanceof Error ? err.message : 'Git rollback failed'};
   }
 }

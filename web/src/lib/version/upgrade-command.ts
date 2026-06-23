@@ -19,6 +19,7 @@ export function buildUpgradeCommand(
     case 'systemd':
       return `${BUILD_AND_MIGRATE} && systemctl restart ${service}`;
     case 'aapanel':
+    case 'git':
       // Build on the server, then restart the Node project from the panel.
       return BUILD_AND_MIGRATE;
     case 'manual':
