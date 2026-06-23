@@ -3,6 +3,7 @@ import {prisma} from '@/lib/db/prisma';
 import {encryptSecret, decryptSecret} from '@/lib/crypto/secret-box';
 import {getEncryptionKey} from '@/lib/config/secrets';
 import {DEPLOYMENT_MODES, type DeploymentMode, type UpdateSettingsView} from './types';
+import {HOME_REPO} from './home-repo';
 
 const SINGLETON_ID = 'singleton';
 
@@ -15,6 +16,10 @@ const DEFAULTS: UpdateSettingsView = {
   githubOwner: '',
   githubRepo: '',
   hasToken: false,
+  selfBaseUrl: null,
+  hasSelfKey: false,
+  selfInsecureTLS: true,
+  selfProject: null,
   aapanelServerId: null,
   aapanelProject: null,
   startScript: null,
@@ -33,6 +38,10 @@ export async function getUpdateSettings(): Promise<UpdateSettingsView> {
     githubOwner: row.githubOwner,
     githubRepo: row.githubRepo,
     hasToken: Boolean(row.githubTokenEnc),
+    selfBaseUrl: row.selfBaseUrl,
+    hasSelfKey: Boolean(row.selfApiKeyEnc),
+    selfInsecureTLS: row.selfInsecureTLS,
+    selfProject: row.selfProject,
     aapanelServerId: row.aapanelServerId,
     aapanelProject: row.aapanelProject,
     startScript: row.startScript,
@@ -49,31 +58,37 @@ export interface SaveUpdateSettingsInput {
   githubRepo: string;
   /** New token; blank/undefined keeps the existing one. */
   githubToken?: string;
-  aapanelServerId?: string | null;
-  aapanelProject?: string | null;
-  startScript?: string | null;
+  /** Self-restart: the panel's own aaPanel. */
+  selfBaseUrl?: string | null;
+  /** New self-restart api_sk; blank/undefined keeps the existing one. */
+  selfApiKey?: string;
+  selfInsecureTLS?: boolean;
+  selfProject?: string | null;
   serviceName?: string | null;
 }
 
-/** Upserts the singleton settings. A blank token preserves the stored one. */
+/** Upserts the singleton settings. A blank token/api-key preserves the stored one. */
 export async function saveUpdateSettings(input: SaveUpdateSettingsInput): Promise<void> {
   const data = {
     deploymentMode: input.deploymentMode,
     githubOwner: input.githubOwner,
     githubRepo: input.githubRepo,
-    aapanelServerId: input.aapanelServerId ?? null,
-    aapanelProject: input.aapanelProject ?? null,
-    startScript: input.startScript ?? null,
+    selfBaseUrl: input.selfBaseUrl ?? null,
+    selfInsecureTLS: input.selfInsecureTLS ?? true,
+    selfProject: input.selfProject ?? null,
     serviceName: input.serviceName ?? null,
   };
 
+  const key = getEncryptionKey();
   const token = input.githubToken?.trim();
-  const tokenData = token ? {githubTokenEnc: encryptSecret(token, getEncryptionKey())} : {};
+  const tokenData = token ? {githubTokenEnc: encryptSecret(token, key)} : {};
+  const selfKey = input.selfApiKey?.trim();
+  const selfKeyData = selfKey ? {selfApiKeyEnc: encryptSecret(selfKey, key)} : {};
 
   await prisma.updateSettings.upsert({
     where: {id: SINGLETON_ID},
-    create: {id: SINGLETON_ID, ...data, ...tokenData},
-    update: {...data, ...tokenData},
+    create: {id: SINGLETON_ID, ...data, ...tokenData, ...selfKeyData},
+    update: {...data, ...tokenData, ...selfKeyData},
   });
 }
 
@@ -107,19 +122,43 @@ export async function recordActivation(activatedVersion: string, previousVersion
   ]);
 }
 
-/** Server-only: GitHub config with the decrypted token (for release checks). */
+/**
+ * Server-only: the effective GitHub source for release checks, with the decrypted
+ * token. Falls back to the app's own repo ({@link HOME_REPO}) so a stock install
+ * checks for its own updates with no configuration; a stored owner/repo (a fork)
+ * overrides it.
+ */
 export async function getGithubConfig(): Promise<{owner: string; repo: string; token: string | null}> {
   const row = await prisma.updateSettings.findUnique({where: {id: SINGLETON_ID}});
-  if (!row) return {owner: '', repo: '', token: null};
+  const owner = row?.githubOwner?.trim() || HOME_REPO.owner;
+  const repo = row?.githubRepo?.trim() || HOME_REPO.repo;
   let token: string | null = null;
-  if (row.githubTokenEnc) {
+  if (row?.githubTokenEnc) {
     try {
       token = decryptSecret(row.githubTokenEnc, getEncryptionKey());
     } catch {
       token = null; // a stale/invalid ciphertext must not break the check
     }
   }
-  return {owner: row.githubOwner, repo: row.githubRepo, token};
+  return {owner, repo, token};
+}
+
+/**
+ * Server-only: the panel's own aaPanel self-restart config, including the
+ * encrypted api_sk (for {@link createClientForServer}). Returns null when any
+ * required field is missing — the caller then reports "not configured".
+ */
+export async function getSelfRestartConfig(): Promise<
+  {baseUrl: string; apiSkEnc: string; insecureTLS: boolean; project: string} | null
+> {
+  const row = await prisma.updateSettings.findUnique({where: {id: SINGLETON_ID}});
+  if (!row?.selfBaseUrl || !row.selfApiKeyEnc || !row.selfProject) return null;
+  return {
+    baseUrl: row.selfBaseUrl,
+    apiSkEnc: row.selfApiKeyEnc,
+    insecureTLS: row.selfInsecureTLS,
+    project: row.selfProject,
+  };
 }
 
 /** Appends the version to history if it differs from the most recent entry. */

@@ -18,6 +18,18 @@ const optionalText = (max: number) =>
     .optional()
     .transform((v) => (v && v.length > 0 ? v : null));
 
+/** Optional http(s) URL → string or null. */
+const optionalUrl = z
+  .string()
+  .trim()
+  .max(255)
+  .optional()
+  .transform((v) => (v && v.length > 0 ? v : null))
+  .refine((v) => v === null || /^https?:\/\/.+/i.test(v), {message: 'Must be an http(s) URL'});
+
+/** HTML checkbox → boolean ("on" when checked, absent when not). Defaults to true. */
+const checkbox = z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean());
+
 export const updateSettingsSchema = z.object({
   deploymentMode: z.enum(DEPLOYMENT_MODES),
   githubOwner: ghSegment,
@@ -28,9 +40,16 @@ export const updateSettingsSchema = z.object({
     .max(255)
     .optional()
     .transform((v) => (v && v.trim().length > 0 ? v.trim() : undefined)),
-  aapanelServerId: optionalText(64),
-  aapanelProject: optionalText(64),
-  startScript: optionalText(64),
+  // Self-restart: the panel's own aaPanel.
+  selfBaseUrl: optionalUrl,
+  // Blank keeps the stored api_sk; a value replaces it.
+  selfApiKey: z
+    .string()
+    .max(255)
+    .optional()
+    .transform((v) => (v && v.trim().length > 0 ? v.trim() : undefined)),
+  selfInsecureTLS: checkbox,
+  selfProject: optionalText(64),
   serviceName: optionalText(64),
 });
 

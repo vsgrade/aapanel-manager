@@ -3,7 +3,6 @@ import {getTranslations} from 'next-intl/server';
 import {requireUser} from '@/lib/auth/guards';
 import {listUsersAction} from '@/server/actions/users';
 import {UsersTable} from '@/components/users/users-table';
-import {ChangeOwnPasswordCard} from '@/components/users/change-own-password-card';
 
 export default async function UsersPage() {
   const user = await requireUser();
@@ -20,7 +19,6 @@ export default async function UsersPage() {
       </div>
 
       <UsersTable initial={initial} />
-      <ChangeOwnPasswordCard />
     </div>
   );
 }

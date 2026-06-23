@@ -63,8 +63,8 @@ export function UpdateStatusCard({initial}: {initial: UpdateStatusResult}) {
         </CardAction>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+      <CardContent className="space-y-5">
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
           <div>
             <div className="text-xs text-muted-foreground">{t('currentVersion')}</div>
             <div className="font-medium">
@@ -72,18 +72,18 @@ export function UpdateStatusCard({initial}: {initial: UpdateStatusResult}) {
               {s.current.commit ? <span className="text-muted-foreground"> ({s.current.commit})</span> : null}
             </div>
           </div>
-          {s.configured && s.latest ? (
+          {s.latest ? (
             <div>
               <div className="text-xs text-muted-foreground">{t('latestVersion')}</div>
               <div className="font-medium">{s.latest.version}</div>
             </div>
           ) : null}
-          {s.configured && s.updateAvailable ? (
+          {s.updateAvailable ? (
             <Badge className="border-0 bg-amber-500/15 text-amber-700 dark:text-amber-400">
               <ArrowUpCircle className="mr-1 size-3.5" />
               {t('updateAvailable')}
             </Badge>
-          ) : s.configured && s.latest ? (
+          ) : s.latest ? (
             <Badge variant="secondary" className="border-0 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
               <CheckCircle2 className="mr-1 size-3.5" />
               {t('upToDate')}
@@ -91,18 +91,29 @@ export function UpdateStatusCard({initial}: {initial: UpdateStatusResult}) {
           ) : null}
         </div>
 
-        {!s.configured ? <p className="text-sm text-muted-foreground">{t('notConfigured')}</p> : null}
-
         {s.error ? (
           <p className="text-sm text-destructive" role="alert">
             {t('checkFailed')}: {s.error}
           </p>
         ) : null}
 
-        {s.latest && s.latest.body ? (
-          <details className="rounded-md border p-3">
-            <summary className="cursor-pointer text-sm font-medium">{t('changelog')}</summary>
-            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+        {/* One-click update / rollback — always shown (buttons disable when not applicable) */}
+        <UpdateActions
+          stagingSupported={s.stagingSupported}
+          selfRestartConfigured={s.selfRestartConfigured}
+          bundleAvailable={s.bundleAvailable}
+          updateAvailable={s.updateAvailable}
+          latestVersion={s.latest?.version ?? null}
+          stagedVersion={s.stagedVersion}
+          previousVersion={s.previousVersion}
+          currentVersion={s.current.version}
+          onChanged={refresh}
+        />
+
+        {s.latest?.body ? (
+          <div className="space-y-1.5">
+            <span className="text-xs text-muted-foreground">{t('changelog')}</span>
+            <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-md border p-3 text-xs text-muted-foreground">
               {s.latest.body}
             </pre>
             {s.latest.htmlUrl ? (
@@ -110,52 +121,42 @@ export function UpdateStatusCard({initial}: {initial: UpdateStatusResult}) {
                 href={s.latest.htmlUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
               >
                 <ExternalLink className="size-3.5" />
                 {t('viewOnGithub')}
               </a>
             ) : null}
-          </details>
-        ) : null}
-
-        {s.stagingSupported ? (
-          <UpdateActions
-            bundleAvailable={s.bundleAvailable}
-            updateAvailable={s.updateAvailable}
-            latestVersion={s.latest?.version ?? null}
-            stagedVersion={s.stagedVersion}
-            previousVersion={s.previousVersion}
-            currentVersion={s.current.version}
-            onChanged={refresh}
-          />
-        ) : null}
-
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">{t('upgradeCommand')}</span>
-            <Button variant="ghost" size="sm" onClick={copyCommand}>
-              <Copy className="mr-1 size-3.5" />
-              {t('copy')}
-            </Button>
           </div>
-          <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">{s.upgradeCommand}</pre>
-        </div>
+        ) : null}
 
-        <div className="space-y-1.5">
-          <span className="text-xs text-muted-foreground">{t('history')}</span>
-          {s.history.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('noHistory')}</p>
-          ) : (
-            <ul className="text-sm">
-              {s.history.map((h) => (
-                <li key={h.installedAt} className="flex justify-between border-b py-1 last:border-0">
-                  <span className="font-medium">{h.version}</span>
-                  <span className="text-xs text-muted-foreground">{fmt(h.installedAt)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">{t('upgradeCommand')}</span>
+              <Button variant="ghost" size="sm" onClick={copyCommand}>
+                <Copy className="mr-1 size-3.5" />
+                {t('copy')}
+              </Button>
+            </div>
+            <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">{s.upgradeCommand}</pre>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-xs text-muted-foreground">{t('history')}</span>
+            {s.history.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('noHistory')}</p>
+            ) : (
+              <ul className="text-sm">
+                {s.history.map((h) => (
+                  <li key={h.installedAt} className="flex justify-between border-b py-1 last:border-0">
+                    <span className="font-medium">{h.version}</span>
+                    <span className="text-xs text-muted-foreground">{fmt(h.installedAt)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

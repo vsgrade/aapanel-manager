@@ -6,6 +6,7 @@ import {
   getUpdateSettings,
   saveUpdateSettings,
   getGithubConfig,
+  getSelfRestartConfig,
   getVersionHistory,
   recordVersionIfNew,
 } from '@/lib/version/settings';
@@ -13,14 +14,12 @@ import {fetchReleases, pickLatestStable, GithubError, type GithubRelease} from '
 import {isNewer} from '@/lib/version/semver';
 import {buildUpgradeCommand} from '@/lib/version/upgrade-command';
 import {updateSettingsSchema} from '@/lib/validation/update-settings';
-import {listServerOptions, type ServerOption} from '@/lib/servers/query';
 import type {UpdateSettingsView, DeploymentMode} from '@/lib/version/types';
 import {recordAudit} from '@/lib/audit';
 import {parseEnv} from '@/env';
 import {getDeployAdapter, type StageStep, type DeployAdapter} from '@/lib/deploy';
 import {findBundleAssets} from '@/lib/deploy/bundle-assets';
 import {createClientForServer} from '@/lib/aapanel';
-import {prisma} from '@/lib/db/prisma';
 import {log} from '@/log';
 
 // ---------------------------------------------------------------------------
@@ -55,13 +54,15 @@ export type UpdateStatusResult =
       previousVersion: string | null;
       /** True when one-click staging is wired for this mode + APP_RELEASE_ROOT is set. */
       stagingSupported: boolean;
+      /** True when the panel's own aaPanel self-restart target is fully configured. */
+      selfRestartConfigured: boolean;
       /** True when the latest release ships a standalone bundle the panel can stage. */
       bundleAvailable: boolean;
     }
   | {ok: false; message: string};
 
 export type UpdateSettingsDataResult =
-  | {ok: true; settings: UpdateSettingsView; servers: ServerOption[]}
+  | {ok: true; settings: UpdateSettingsView}
   | {ok: false; message: string};
 
 export type SaveSettingsResult =
@@ -103,7 +104,6 @@ export async function getUpdateStatusAction(): Promise<UpdateStatusResult> {
     version: h.version,
     installedAt: h.installedAt.toISOString(),
   }));
-  const configured = Boolean(settings.githubOwner && settings.githubRepo);
 
   const env = parseEnv();
   const stagingSupported =
@@ -113,12 +113,11 @@ export async function getUpdateStatusAction(): Promise<UpdateStatusResult> {
     stagedVersion: settings.stagedVersion,
     previousVersion: settings.previousVersion,
     stagingSupported,
+    selfRestartConfigured: Boolean(settings.selfBaseUrl && settings.hasSelfKey && settings.selfProject),
   };
 
-  if (!configured) {
-    return {ok: true, current, configured: false, latest: null, updateAvailable: false, releases: [], upgradeCommand, history, error: null, ...base, bundleAvailable: false};
-  }
-
+  // The app always knows its own repo (HOME_REPO), so it is "configured" out of
+  // the box; getGithubConfig() resolves a fork override when the admin set one.
   try {
     const cfg = await getGithubConfig();
     const releases = await fetchReleases(cfg);
@@ -142,15 +141,15 @@ export async function getUpdateStatusAction(): Promise<UpdateStatusResult> {
   }
 }
 
-/** Loads settings + the server list (for the aaPanel-mode picker). Requires admin role. */
+/** Loads the update settings. Requires admin role. */
 export async function getUpdateSettingsAction(): Promise<UpdateSettingsDataResult> {
   try {
     await requireAdmin();
   } catch {
     return {ok: false, message: 'forbidden'};
   }
-  const [settings, servers] = await Promise.all([getUpdateSettings(), listServerOptions()]);
-  return {ok: true, settings, servers};
+  const settings = await getUpdateSettings();
+  return {ok: true, settings};
 }
 
 /** Saves update settings. Requires admin role. Records audit on both paths. */
@@ -259,8 +258,8 @@ export type ActivateActionResult =
 
 /**
  * Builds the aaPanel adapter plus a restart() that bounces the panel's OWN Node
- * project through the aaPanel API. Validates the aaPanel mode is fully
- * configured and the referenced server still exists.
+ * project through its OWN aaPanel API. The self-restart target is configured once
+ * (Settings → self-restart), independent of the managed-servers list.
  */
 async function prepareSelfRestart(): Promise<
   | {ok: true; adapter: DeployAdapter; restart: () => Promise<void>; runningVersion: string; settings: UpdateSettingsView}
@@ -270,17 +269,15 @@ async function prepareSelfRestart(): Promise<
   const settings = await getUpdateSettings();
   const adapter = getDeployAdapter(settings.deploymentMode, env.APP_RELEASE_ROOT);
   if (!adapter) return {ok: false, error: 'unsupported-mode'};
-  if (!settings.aapanelServerId || !settings.aapanelProject) {
-    return {ok: false, error: 'aapanel-not-configured'};
-  }
-  const server = await prisma.server.findUnique({
-    where: {id: settings.aapanelServerId},
-    select: {baseUrl: true, apiSkEnc: true, insecureTLS: true},
+  const self = await getSelfRestartConfig();
+  if (!self) return {ok: false, error: 'self-restart-not-configured'};
+  const client = createClientForServer({
+    baseUrl: self.baseUrl,
+    apiSkEnc: self.apiSkEnc,
+    insecureTLS: self.insecureTLS,
   });
-  if (!server) return {ok: false, error: 'server-not-found'};
-  const project = settings.aapanelProject;
   const restart = async (): Promise<void> => {
-    await createClientForServer(server).batchOperation([project], 'restart');
+    await client.batchOperation([self.project], 'restart');
   };
   return {ok: true, adapter, restart, runningVersion: getCurrentVersion().version, settings};
 }

@@ -2,24 +2,43 @@ import {describe, it, expect} from 'vitest';
 import {updateSettingsSchema} from './update-settings';
 
 describe('updateSettingsSchema', () => {
-  it('parses a full valid input', () => {
+  it('parses a full valid input incl. self-restart', () => {
     const parsed = updateSettingsSchema.parse({
-      deploymentMode: 'docker',
+      deploymentMode: 'aapanel',
       githubOwner: 'acme',
       githubRepo: 'panel',
       githubToken: 'ghp_xxx',
+      selfBaseUrl: 'https://127.0.0.1:8888',
+      selfApiKey: 'sk_xxx',
+      selfInsecureTLS: 'on',
+      selfProject: 'aapanel-manager',
       serviceName: 'app',
     });
-    expect(parsed.deploymentMode).toBe('docker');
+    expect(parsed.deploymentMode).toBe('aapanel');
     expect(parsed.githubOwner).toBe('acme');
     expect(parsed.githubToken).toBe('ghp_xxx');
     expect(parsed.serviceName).toBe('app');
-    expect(parsed.aapanelServerId).toBeNull();
+    expect(parsed.selfBaseUrl).toBe('https://127.0.0.1:8888');
+    expect(parsed.selfApiKey).toBe('sk_xxx');
+    expect(parsed.selfInsecureTLS).toBe(true);
+    expect(parsed.selfProject).toBe('aapanel-manager');
   });
 
-  it('treats a blank token as undefined (keep existing)', () => {
-    const parsed = updateSettingsSchema.parse({deploymentMode: 'manual', githubToken: '   '});
+  it('treats a blank token / self-key as undefined (keep existing)', () => {
+    const parsed = updateSettingsSchema.parse({deploymentMode: 'manual', githubToken: '   ', selfApiKey: '  '});
     expect(parsed.githubToken).toBeUndefined();
+    expect(parsed.selfApiKey).toBeUndefined();
+  });
+
+  it('treats a missing self-restart checkbox as false, and blank URL/project as null', () => {
+    const parsed = updateSettingsSchema.parse({deploymentMode: 'aapanel'});
+    expect(parsed.selfInsecureTLS).toBe(false);
+    expect(parsed.selfBaseUrl).toBeNull();
+    expect(parsed.selfProject).toBeNull();
+  });
+
+  it('rejects a non-http self-restart URL', () => {
+    expect(updateSettingsSchema.safeParse({deploymentMode: 'aapanel', selfBaseUrl: 'ftp://x'}).success).toBe(false);
   });
 
   it('defaults missing owner/repo to empty strings', () => {
