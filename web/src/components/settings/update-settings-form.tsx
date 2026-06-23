@@ -19,6 +19,7 @@ const MODE_KEYS: Record<DeploymentMode, string> = {
   docker: 'modeDocker',
   systemd: 'modeSystemd',
   aapanel: 'modeAapanel',
+  git: 'modeGit',
   manual: 'modeManual',
 };
 
@@ -97,8 +98,8 @@ export function UpdateSettingsForm({settings}: UpdateSettingsFormProps) {
             ) : null}
           </div>
 
-          {/* Self-restart — only for aaPanel mode: the panel's OWN aaPanel, used to restart itself */}
-          {mode === 'aapanel' ? (
+          {/* Self-restart — for aaPanel & git modes: the panel's OWN aaPanel, used to restart itself */}
+          {mode === 'aapanel' || mode === 'git' ? (
             <div className="space-y-4 rounded-md border p-3">
               <div>
                 <div className="text-sm font-medium">{t('selfTitle')}</div>

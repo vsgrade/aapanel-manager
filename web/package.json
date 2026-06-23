@@ -13,6 +13,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "prod:deploy": "git pull && pnpm install && pnpm run db:generate && pnpm run db:deploy && pnpm run build",
+    "release": "node scripts/release-version.mjs",
     "worker": "tsx --env-file-if-exists=.env --tsconfig tsconfig.worker.json src/worker/index.ts"
   },
   "dependencies": {

@@ -4,7 +4,14 @@ import {useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {toast} from 'sonner';
 import {ArrowUpCircle, Download, RotateCcw, Loader2} from 'lucide-react';
-import {stageUpdateAction, activateUpdateAction, rollbackUpdateAction} from '@/server/actions/updates';
+import {
+  stageUpdateAction,
+  activateUpdateAction,
+  rollbackUpdateAction,
+  gitUpdateAction,
+  gitRollbackAction,
+} from '@/server/actions/updates';
+import type {DeploymentMode} from '@/lib/version/types';
 import {Button} from '@/components/ui/button';
 import {
   Dialog,
@@ -16,7 +23,8 @@ import {
 } from '@/components/ui/dialog';
 
 export interface UpdateActionsProps {
-  /** Whether one-click staging is wired on this host (APP_RELEASE_ROOT + adapter). */
+  deploymentMode: DeploymentMode;
+  /** Whether one-click bundle staging is wired (APP_RELEASE_ROOT + adapter). */
   stagingSupported: boolean;
   /** Whether the panel's own aaPanel self-restart target is configured. */
   selfRestartConfigured: boolean;
@@ -30,22 +38,28 @@ export interface UpdateActionsProps {
   onChanged: () => void;
 }
 
-type Confirm = {kind: 'activate' | 'rollback'; version: string} | null;
+type Confirm = {kind: 'update' | 'rollback'; version: string} | null;
 type Phase = 'idle' | 'staging' | 'restarting';
 
-const HEALTH_TIMEOUT_MS = 180_000;
 const HEALTH_POLL_MS = 2_500;
+/** Bundle activate just restarts; git also installs+builds, so it needs longer. */
+const RESTART_TIMEOUT_MS = 180_000;
+const GIT_TIMEOUT_MS = 900_000;
 
 /** Maps server action error codes to localized text (falls back to the raw message). */
 const ERR_KEYS: Record<string, string> = {
   'unsupported-mode': 'errUnsupportedMode',
   'self-restart-not-configured': 'errSelfNotConfigured',
+  'not-a-git-repo': 'errNotGitRepo',
+  'update-in-progress': 'errUpdateInProgress',
+  'up-to-date': 'updateUpToDate',
   'nothing-staged': 'errNothingStaged',
   'release-not-found': 'errReleaseNotFound',
 };
 
 export function UpdateActions(props: UpdateActionsProps) {
   const {
+    deploymentMode,
     stagingSupported,
     selfRestartConfigured,
     bundleAvailable,
@@ -60,6 +74,7 @@ export function UpdateActions(props: UpdateActionsProps) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [confirm, setConfirm] = useState<Confirm>(null);
   const busy = phase !== 'idle';
+  const isGit = deploymentMode === 'git';
 
   const errText = (code: string, message?: string): string => {
     const key = ERR_KEYS[code];
@@ -67,8 +82,8 @@ export function UpdateActions(props: UpdateActionsProps) {
   };
 
   /** Polls the public health probe until it reports the target version, or times out. */
-  async function waitForVersion(target: string): Promise<boolean> {
-    const deadline = Date.now() + HEALTH_TIMEOUT_MS;
+  async function waitForVersion(target: string, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, HEALTH_POLL_MS));
       try {
@@ -84,6 +99,7 @@ export function UpdateActions(props: UpdateActionsProps) {
     return false;
   }
 
+  // Bundle mode: download + migrate the latest release (no restart yet).
   function doStage(): void {
     if (!latestVersion || busy) return;
     setPhase('staging');
@@ -104,13 +120,19 @@ export function UpdateActions(props: UpdateActionsProps) {
     })();
   }
 
-  function runRestartAction(kind: 'activate' | 'rollback', target: string): void {
+  /** Runs an apply/rollback (bundle or git), then polls health for the new version. */
+  function runDeploy(kind: 'update' | 'rollback', target: string): void {
     setConfirm(null);
     setPhase('restarting');
+    const timeoutMs = isGit ? GIT_TIMEOUT_MS : RESTART_TIMEOUT_MS;
     void (async () => {
-      let res: {ok: boolean; error?: string; message?: string} | undefined;
+      let res: {ok: boolean; error?: string; message?: string; target?: string; version?: string} | undefined;
       try {
-        res = kind === 'activate' ? await activateUpdateAction() : await rollbackUpdateAction(target);
+        if (isGit) {
+          res = kind === 'update' ? await gitUpdateAction() : await gitRollbackAction(target);
+        } else {
+          res = kind === 'update' ? await activateUpdateAction() : await rollbackUpdateAction(target);
+        }
       } catch {
         // The restart can drop this request's connection — treat as "in progress".
         res = undefined;
@@ -120,56 +142,62 @@ export function UpdateActions(props: UpdateActionsProps) {
         setPhase('idle');
         return;
       }
-      // Action accepted (or connection dropped on restart) — wait for the new version.
-      const ok = await waitForVersion(target);
+      const effective = res?.target ?? res?.version ?? target;
+      const ok = await waitForVersion(effective, timeoutMs);
       setPhase('idle');
-      toast[ok ? 'success' : 'error'](ok ? t('updateApplied', {version: target}) : t('updateTimeout'));
+      toast[ok ? 'success' : 'error'](ok ? t('updateApplied', {version: effective}) : t('updateTimeout'));
       onChanged();
     })();
   }
 
-  // The primary action is contextual: apply a staged release, prepare an available
-  // one, or otherwise a disabled "Update" with the reason it is unavailable.
-  const canPrepare =
-    stagingSupported && selfRestartConfigured && updateAvailable && bundleAvailable && Boolean(latestVersion);
-  const primaryReason = !stagingSupported
-    ? t('updateNeedsServer')
-    : !selfRestartConfigured
-      ? t('updateNeedsSelfConfig')
+  // --- which primary action is offered, and why it may be disabled ----------
+  // Git: one-click update straight to the latest. Bundle: stage → apply.
+  const canGitUpdate = isGit && selfRestartConfigured && updateAvailable && Boolean(latestVersion);
+  const canPrepare = !isGit && stagingSupported && selfRestartConfigured && updateAvailable && bundleAvailable && Boolean(latestVersion);
+  const primaryReason = !selfRestartConfigured
+    ? t('updateNeedsSelfConfig')
+    : !isGit && !stagingSupported
+      ? t('updateNeedsServer')
       : !updateAvailable
         ? t('updateUpToDate')
-        : !bundleAvailable
+        : !isGit && !bundleAvailable
           ? t('noBundle')
           : '';
 
-  const canRollback = stagingSupported && selfRestartConfigured && Boolean(previousVersion);
+  const canRollback = selfRestartConfigured && Boolean(previousVersion) && (isGit || stagingSupported);
   const rollbackReason = !previousVersion
     ? t('rollbackNoPrev')
-    : !stagingSupported
-      ? t('updateNeedsServer')
-      : !selfRestartConfigured
-        ? t('updateNeedsSelfConfig')
+    : !selfRestartConfigured
+      ? t('updateNeedsSelfConfig')
+      : !isGit && !stagingSupported
+        ? t('updateNeedsServer')
         : '';
 
   return (
     <div className="space-y-3 rounded-md border p-3">
       <div>
         <div className="text-sm font-medium">{t('autoUpdate')}</div>
-        <p className="text-xs text-muted-foreground">{t('autoUpdateHint')}</p>
+        <p className="text-xs text-muted-foreground">{isGit ? t('autoUpdateHintGit') : t('autoUpdateHint')}</p>
       </div>
 
       {phase === 'restarting' ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
           <Loader2 className="size-4 animate-spin" />
-          {t('applying')}
+          {isGit ? t('applyingGit') : t('applying')}
         </p>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        {stagedVersion ? (
-          <Button size="sm" disabled={busy} onClick={() => setConfirm({kind: 'activate', version: stagedVersion})}>
+        {/* Primary: apply staged (bundle) / prepare (bundle) / update (git) / disabled */}
+        {!isGit && stagedVersion ? (
+          <Button size="sm" disabled={busy} onClick={() => setConfirm({kind: 'update', version: stagedVersion})}>
             <ArrowUpCircle className="mr-1 size-4" />
             {t('applyUpdate', {version: stagedVersion})}
+          </Button>
+        ) : canGitUpdate ? (
+          <Button size="sm" disabled={busy} onClick={() => latestVersion && setConfirm({kind: 'update', version: latestVersion})}>
+            <ArrowUpCircle className="mr-1 size-4" />
+            {t('updateTo', {version: latestVersion ?? ''})}
           </Button>
         ) : canPrepare ? (
           <Button size="sm" disabled={busy} onClick={doStage}>
@@ -196,9 +224,9 @@ export function UpdateActions(props: UpdateActionsProps) {
       </div>
 
       {/* One muted line explaining the current state of the buttons above. */}
-      {stagedVersion ? (
+      {!isGit && stagedVersion ? (
         <p className="text-xs text-muted-foreground">{t('stagedReady', {version: stagedVersion})}</p>
-      ) : !canPrepare && primaryReason ? (
+      ) : !canGitUpdate && !canPrepare && primaryReason ? (
         <p className="text-xs text-muted-foreground">{primaryReason}</p>
       ) : null}
 
@@ -213,15 +241,15 @@ export function UpdateActions(props: UpdateActionsProps) {
             <DialogTitle>{confirm?.kind === 'rollback' ? t('confirmRollbackTitle') : t('confirmApplyTitle')}</DialogTitle>
             <DialogDescription>
               {confirm?.kind === 'rollback'
-                ? t('confirmRollbackBody', {version: confirm?.version ?? '', current: currentVersion})
-                : t('confirmApplyBody', {version: confirm?.version ?? '', current: currentVersion})}
+                ? t(isGit ? 'confirmGitRollbackBody' : 'confirmRollbackBody', {version: confirm?.version ?? '', current: currentVersion})
+                : t(isGit ? 'confirmGitUpdateBody' : 'confirmApplyBody', {version: confirm?.version ?? '', current: currentVersion})}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirm(null)}>
               {t('cancel')}
             </Button>
-            <Button onClick={() => confirm && runRestartAction(confirm.kind, confirm.version)}>{t('confirm')}</Button>
+            <Button onClick={() => confirm && runDeploy(confirm.kind, confirm.version)}>{t('confirm')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
