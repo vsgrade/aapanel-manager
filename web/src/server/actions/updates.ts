@@ -19,7 +19,8 @@ import {recordAudit} from '@/lib/audit';
 import {parseEnv} from '@/env';
 import {getDeployAdapter, type StageStep, type DeployAdapter} from '@/lib/deploy';
 import {findBundleAssets} from '@/lib/deploy/bundle-assets';
-import {gitRepoRoot, updatePaths, acquireUpdateLock, releaseUpdateLock, launchGitUpdate} from '@/lib/deploy/git';
+import {gitRepoRoot, updatePaths, acquireUpdateLock, releaseUpdateLock, launchGitUpdate, readUpdateStatus} from '@/lib/deploy/git';
+import type {UpdateStatus} from '@/lib/deploy/update-status';
 import {createClientForServer} from '@/lib/aapanel';
 import {log} from '@/log';
 
@@ -428,4 +429,24 @@ export async function gitRollbackAction(toVersion: string): Promise<GitDeployAct
     await recordAudit({userId, action: 'updates.git-rollback', target, result: 'error'});
     return {ok: false, error: err instanceof Error ? err.message : 'Git rollback failed'};
   }
+}
+
+export type UpdateProgressResult =
+  | {ok: true; status: UpdateStatus | null}
+  | {ok: false; error: string};
+
+/**
+ * Live step-by-step progress of an in-flight (or last) git update, read from
+ * the `.update.status` file the detached runner writes. The UI polls this while
+ * an update runs to render the checklist. Admin only; never throws to the client.
+ */
+export async function getUpdateProgressAction(): Promise<UpdateProgressResult> {
+  try {
+    await requireAdmin();
+  } catch {
+    return {ok: false, error: 'forbidden'};
+  }
+  const repoRoot = await gitRepoRoot(process.cwd());
+  if (!repoRoot) return {ok: true, status: null};
+  return {ok: true, status: readUpdateStatus(updatePaths(repoRoot).status)};
 }

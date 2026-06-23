@@ -5,8 +5,9 @@ import type {DeploymentMode} from './types';
  * mode (Phase 1 is read-only — the panel shows the command, it does not run it).
  * The actual one-click update lands in Phase 2 via deployment adapters.
  */
-/** Pull + install + build + apply migrations — the orchestrator-agnostic core. */
-const BUILD_AND_MIGRATE = 'git pull && pnpm install && pnpm build && pnpm prisma migrate deploy';
+/** Pull + install + generate client + apply migrations + build — orchestrator-agnostic core. */
+const BUILD_AND_MIGRATE =
+  'git pull && npm install && npm run db:generate && npm run db:deploy && npm run build';
 
 export function buildUpgradeCommand(
   mode: DeploymentMode,

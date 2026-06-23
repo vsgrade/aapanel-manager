@@ -3,15 +3,17 @@
 import {useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {toast} from 'sonner';
-import {ArrowUpCircle, Download, RotateCcw, Loader2} from 'lucide-react';
+import {ArrowUpCircle, Download, RotateCcw, Loader2, Check, X, Circle} from 'lucide-react';
 import {
   stageUpdateAction,
   activateUpdateAction,
   rollbackUpdateAction,
   gitUpdateAction,
   gitRollbackAction,
+  getUpdateProgressAction,
 } from '@/server/actions/updates';
 import type {DeploymentMode} from '@/lib/version/types';
+import {UPDATE_STEPS, deriveStepStates, type StepState, type UpdateStep} from '@/lib/deploy/update-status';
 import {Button} from '@/components/ui/button';
 import {
   Dialog,
@@ -42,9 +44,19 @@ type Confirm = {kind: 'update' | 'rollback'; version: string} | null;
 type Phase = 'idle' | 'staging' | 'restarting';
 
 const HEALTH_POLL_MS = 2_500;
+/** How often the UI polls the runner's structured step progress (git mode). */
+const PROGRESS_POLL_MS = 2_000;
 /** Bundle activate just restarts; git also installs+builds, so it needs longer. */
 const RESTART_TIMEOUT_MS = 180_000;
 const GIT_TIMEOUT_MS = 900_000;
+
+/** One row icon in the git update checklist. */
+function StepIcon({state}: {state: StepState}) {
+  if (state === 'done') return <Check className="size-4 text-green-600" aria-hidden />;
+  if (state === 'running') return <Loader2 className="size-4 animate-spin" aria-hidden />;
+  if (state === 'failed') return <X className="size-4 text-destructive" aria-hidden />;
+  return <Circle className="size-4 text-muted-foreground" aria-hidden />;
+}
 
 /** Maps server action error codes to localized text (falls back to the raw message). */
 const ERR_KEYS: Record<string, string> = {
@@ -73,8 +85,17 @@ export function UpdateActions(props: UpdateActionsProps) {
   const t = useTranslations('updates');
   const [phase, setPhase] = useState<Phase>('idle');
   const [confirm, setConfirm] = useState<Confirm>(null);
+  const [steps, setSteps] = useState<Record<UpdateStep, StepState> | null>(null);
   const busy = phase !== 'idle';
   const isGit = deploymentMode === 'git';
+
+  const stepLabel: Record<UpdateStep, string> = {
+    download: t('stepDownload'),
+    install: t('stepInstall'),
+    migrate: t('stepMigrate'),
+    build: t('stepBuild'),
+    restart: t('stepRestart'),
+  };
 
   const errText = (code: string, message?: string): string => {
     const key = ERR_KEYS[code];
@@ -124,7 +145,25 @@ export function UpdateActions(props: UpdateActionsProps) {
   function runDeploy(kind: 'update' | 'rollback', target: string): void {
     setConfirm(null);
     setPhase('restarting');
+    setSteps(null);
     const timeoutMs = isGit ? GIT_TIMEOUT_MS : RESTART_TIMEOUT_MS;
+
+    // Git mode writes structured step progress; poll it to drive the checklist.
+    let polling = isGit;
+    if (isGit) {
+      void (async () => {
+        while (polling) {
+          try {
+            const p = await getUpdateProgressAction();
+            if (p.ok && p.status) setSteps(deriveStepStates(p.status));
+          } catch {
+            // The app may be mid-restart — keep polling.
+          }
+          await new Promise((r) => setTimeout(r, PROGRESS_POLL_MS));
+        }
+      })();
+    }
+
     void (async () => {
       let res: {ok: boolean; error?: string; message?: string; target?: string; version?: string} | undefined;
       try {
@@ -138,13 +177,17 @@ export function UpdateActions(props: UpdateActionsProps) {
         res = undefined;
       }
       if (res && !res.ok) {
+        polling = false;
         toast.error(res.message || errText(res.error ?? 'error'));
         setPhase('idle');
+        setSteps(null);
         return;
       }
       const effective = res?.target ?? res?.version ?? target;
       const ok = await waitForVersion(effective, timeoutMs);
+      polling = false;
       setPhase('idle');
+      setSteps(null);
       toast[ok ? 'success' : 'error'](ok ? t('updateApplied', {version: effective}) : t('updateTimeout'));
       onChanged();
     })();
@@ -181,10 +224,37 @@ export function UpdateActions(props: UpdateActionsProps) {
       </div>
 
       {phase === 'restarting' ? (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-          <Loader2 className="size-4 animate-spin" />
-          {isGit ? t('applyingGit') : t('applying')}
-        </p>
+        isGit && steps ? (
+          <div className="space-y-2" role="status">
+            <p className="text-sm font-medium">{t('applyingGit')}</p>
+            <ul className="space-y-1">
+              {UPDATE_STEPS.map((step) => {
+                const state = steps[step];
+                return (
+                  <li key={step} className="flex items-center gap-2 text-sm">
+                    <StepIcon state={state} />
+                    <span
+                      className={
+                        state === 'pending'
+                          ? 'text-muted-foreground'
+                          : state === 'failed'
+                            ? 'text-destructive'
+                            : undefined
+                      }
+                    >
+                      {stepLabel[step]}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+            <Loader2 className="size-4 animate-spin" />
+            {isGit ? t('applyingGit') : t('applying')}
+          </p>
+        )
       ) : null}
 
       <div className="flex flex-wrap gap-2">
