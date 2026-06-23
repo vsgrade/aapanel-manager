@@ -47,18 +47,30 @@ components/settings/*       # update-status, update-settings-form, version-histo
 
 ## Модель данных (Prisma) — миграция
 
+> **Обновление дизайна (2026-06-23):** `githubOwner/Repo` теперь необязательны — по
+> умолчанию используется зашитый репозиторий проекта (`vsgrade/aapanel-manager`,
+> см. `lib/version/home-repo.ts`); поля заполняются только для форка. Самоперезапуск
+> в режиме aaPanel настраивается отдельным блоком «эта панель» (`self*` ниже), а **не**
+> выбором из управляемых серверов — `aapanelServerId/aapanelProject/startScript`
+> устарели (оставлены nullable, удаляются отдельной contract-миграцией).
+
 ```prisma
 /// Единственная строка настроек обновления (id фиксирован).
 model UpdateSettings {
   id              String   @id @default("singleton")
   deploymentMode  String   @default("manual")  // docker | systemd | aapanel | manual
-  githubOwner     String   @default("")
+  githubOwner     String   @default("")         // пусто = зашитый репо проекта (форк переопределяет)
   githubRepo      String   @default("")
-  githubTokenEnc  String?                       // зашифрован (приватный репо)
-  // aapanel-режим:
-  aapanelServerId String?                       // какой сервер хостит панель
-  aapanelProject  String?                       // имя её Node-проекта в aaPanel
-  startScript     String?                       // project_script из package.json
+  githubTokenEnc  String?                       // зашифрован (приватный форк)
+  // aapanel-режим — самоперезапуск «этой панели» (своя aaPanel, не из списка серверов):
+  selfBaseUrl     String?                       // адрес своей aaPanel (https://127.0.0.1:PORT)
+  selfApiKeyEnc   String?                       // зашифрован api_sk своей aaPanel
+  selfInsecureTLS Boolean  @default(true)       // принимать самоподписанный серт
+  selfProject     String?                       // имя своего Node-проекта в aaPanel
+  // deprecated (заменены self* выше):
+  aapanelServerId String?
+  aapanelProject  String?
+  startScript     String?
   // systemd/pm2/docker:
   serviceName     String?                       // имя сервиса/pm2-приложения
   updatedAt       DateTime @updatedAt

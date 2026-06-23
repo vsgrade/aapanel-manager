@@ -16,6 +16,10 @@ import {
 } from '@/components/ui/dialog';
 
 export interface UpdateActionsProps {
+  /** Whether one-click staging is wired on this host (APP_RELEASE_ROOT + adapter). */
+  stagingSupported: boolean;
+  /** Whether the panel's own aaPanel self-restart target is configured. */
+  selfRestartConfigured: boolean;
   bundleAvailable: boolean;
   updateAvailable: boolean;
   latestVersion: string | null;
@@ -35,15 +39,23 @@ const HEALTH_POLL_MS = 2_500;
 /** Maps server action error codes to localized text (falls back to the raw message). */
 const ERR_KEYS: Record<string, string> = {
   'unsupported-mode': 'errUnsupportedMode',
-  'aapanel-not-configured': 'errAapanelNotConfigured',
-  'server-not-found': 'errServerNotFound',
+  'self-restart-not-configured': 'errSelfNotConfigured',
   'nothing-staged': 'errNothingStaged',
   'release-not-found': 'errReleaseNotFound',
 };
 
 export function UpdateActions(props: UpdateActionsProps) {
-  const {bundleAvailable, updateAvailable, latestVersion, stagedVersion, previousVersion, currentVersion, onChanged} =
-    props;
+  const {
+    stagingSupported,
+    selfRestartConfigured,
+    bundleAvailable,
+    updateAvailable,
+    latestVersion,
+    stagedVersion,
+    previousVersion,
+    currentVersion,
+    onChanged,
+  } = props;
   const t = useTranslations('updates');
   const [phase, setPhase] = useState<Phase>('idle');
   const [confirm, setConfirm] = useState<Confirm>(null);
@@ -116,8 +128,28 @@ export function UpdateActions(props: UpdateActionsProps) {
     })();
   }
 
-  const showPrepare = !stagedVersion && updateAvailable && bundleAvailable && latestVersion;
-  const showNoBundle = !stagedVersion && updateAvailable && !bundleAvailable;
+  // The primary action is contextual: apply a staged release, prepare an available
+  // one, or otherwise a disabled "Update" with the reason it is unavailable.
+  const canPrepare =
+    stagingSupported && selfRestartConfigured && updateAvailable && bundleAvailable && Boolean(latestVersion);
+  const primaryReason = !stagingSupported
+    ? t('updateNeedsServer')
+    : !selfRestartConfigured
+      ? t('updateNeedsSelfConfig')
+      : !updateAvailable
+        ? t('updateUpToDate')
+        : !bundleAvailable
+          ? t('noBundle')
+          : '';
+
+  const canRollback = stagingSupported && selfRestartConfigured && Boolean(previousVersion);
+  const rollbackReason = !previousVersion
+    ? t('rollbackNoPrev')
+    : !stagingSupported
+      ? t('updateNeedsServer')
+      : !selfRestartConfigured
+        ? t('updateNeedsSelfConfig')
+        : '';
 
   return (
     <div className="space-y-3 rounded-md border p-3">
@@ -139,32 +171,36 @@ export function UpdateActions(props: UpdateActionsProps) {
             <ArrowUpCircle className="mr-1 size-4" />
             {t('applyUpdate', {version: stagedVersion})}
           </Button>
-        ) : showPrepare ? (
+        ) : canPrepare ? (
           <Button size="sm" disabled={busy} onClick={doStage}>
-            {phase === 'staging' ? (
-              <Loader2 className="mr-1 size-4 animate-spin" />
-            ) : (
-              <Download className="mr-1 size-4" />
-            )}
-            {t('prepareUpdate', {version: latestVersion})}
+            {phase === 'staging' ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Download className="mr-1 size-4" />}
+            {t('prepareUpdate', {version: latestVersion ?? ''})}
           </Button>
-        ) : null}
+        ) : (
+          <Button size="sm" disabled title={primaryReason}>
+            <ArrowUpCircle className="mr-1 size-4" />
+            {t('updateLabel')}
+          </Button>
+        )}
 
-        {previousVersion ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={() => setConfirm({kind: 'rollback', version: previousVersion})}
-          >
-            <RotateCcw className="mr-1 size-4" />
-            {t('rollbackTo', {version: previousVersion})}
-          </Button>
-        ) : null}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || !canRollback}
+          title={rollbackReason}
+          onClick={() => previousVersion && setConfirm({kind: 'rollback', version: previousVersion})}
+        >
+          <RotateCcw className="mr-1 size-4" />
+          {previousVersion ? t('rollbackTo', {version: previousVersion}) : t('rollbackLabel')}
+        </Button>
       </div>
 
-      {stagedVersion ? <p className="text-xs text-muted-foreground">{t('stagedReady', {version: stagedVersion})}</p> : null}
-      {showNoBundle ? <p className="text-xs text-muted-foreground">{t('noBundle')}</p> : null}
+      {/* One muted line explaining the current state of the buttons above. */}
+      {stagedVersion ? (
+        <p className="text-xs text-muted-foreground">{t('stagedReady', {version: stagedVersion})}</p>
+      ) : !canPrepare && primaryReason ? (
+        <p className="text-xs text-muted-foreground">{primaryReason}</p>
+      ) : null}
 
       <Dialog
         open={confirm !== null}

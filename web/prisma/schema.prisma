@@ -68,7 +68,13 @@ model UpdateSettings {
   githubOwner     String   @default("")
   githubRepo      String   @default("")
   githubTokenEnc  String? // encrypted PAT for a private repo
-  // aapanel mode: how the panel restarts itself via its own API.
+  // aapanel mode — self-restart: the panel calls its OWN aaPanel API to restart
+  // its own Node project. Configured once; not tied to the managed-servers list.
+  selfBaseUrl     String? // base URL of the panel's own aaPanel (e.g. https://127.0.0.1:PORT)
+  selfApiKeyEnc   String? // encrypted api_sk for that aaPanel (same scheme as Server.apiSkEnc)
+  selfInsecureTLS Boolean  @default(true) // accept the panel's self-signed cert
+  selfProject     String? // the panel's own Node project name in aaPanel
+  // Deprecated (superseded by self* above) — kept nullable, dropped in a later contract migration.
   aapanelServerId String? // soft reference to a Server id (validated on use)
   aapanelProject  String? // the panel's Node project name in aaPanel
   startScript     String? // project_script from package.json

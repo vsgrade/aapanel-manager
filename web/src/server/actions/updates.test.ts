@@ -25,6 +25,9 @@ const settingsMock = vi.hoisted(() => ({
   saveUpdateSettings: vi.fn(async () => undefined),
   setStagedVersion: vi.fn(async () => undefined),
   getGithubConfig: vi.fn(async () => ({owner: 'acme', repo: 'panel', token: null})),
+  getSelfRestartConfig: vi.fn(
+    async () => null as null | {baseUrl: string; apiSkEnc: string; insecureTLS: boolean; project: string},
+  ),
   getVersionHistory: vi.fn(async () => [] as {version: string; installedAt: Date}[]),
   recordVersionIfNew: vi.fn(async () => undefined),
 }));
@@ -63,12 +66,17 @@ const CONFIGURED = {
   githubOwner: 'acme',
   githubRepo: 'panel',
   hasToken: false,
+  selfBaseUrl: null,
+  hasSelfKey: false,
+  selfInsecureTLS: true,
+  selfProject: null,
   aapanelServerId: null,
   aapanelProject: null,
   startScript: null,
   serviceName: 'app',
   stagedVersion: null,
   stagedAt: null,
+  previousVersion: null,
 };
 
 beforeEach(() => {
@@ -81,17 +89,22 @@ beforeEach(() => {
 });
 
 describe('getUpdateStatusAction', () => {
-  it('reports not-configured when owner/repo are blank (no GitHub call)', async () => {
+  it('checks the built-in repo by default even when owner/repo are blank', async () => {
+    // Blank owner/repo no longer means "unconfigured": getGithubConfig() resolves
+    // the app's own repo, so the status check still runs against GitHub.
     settingsMock.getUpdateSettings.mockResolvedValueOnce({...CONFIGURED, githubOwner: '', githubRepo: ''});
+    githubMock.fetchReleases.mockResolvedValueOnce([
+      {version: 'v1.2.0', name: '1.2.0', body: '', prerelease: false, publishedAt: null, htmlUrl: 'u'},
+    ]);
     const res = await getUpdateStatusAction();
     expect(res.ok).toBe(true);
     if (res.ok) {
-      expect(res.configured).toBe(false);
-      expect(res.latest).toBeNull();
+      expect(res.configured).toBe(true);
+      expect(res.updateAvailable).toBe(true);
       expect(res.current.version).toBe('1.0.0');
       expect(res.upgradeCommand).toContain('docker compose');
     }
-    expect(githubMock.fetchReleases).not.toHaveBeenCalled();
+    expect(githubMock.fetchReleases).toHaveBeenCalled();
   });
 
   it('flags an available update when the latest release is newer', async () => {
@@ -135,13 +148,10 @@ describe('getUpdateStatusAction', () => {
 });
 
 describe('getUpdateSettingsAction', () => {
-  it('returns settings and the server list', async () => {
+  it('returns the update settings', async () => {
     const res = await getUpdateSettingsAction();
     expect(res.ok).toBe(true);
-    if (res.ok) {
-      expect(res.settings.deploymentMode).toBe('docker');
-      expect(res.servers).toHaveLength(1);
-    }
+    if (res.ok) expect(res.settings.deploymentMode).toBe('docker');
   });
 });
 
@@ -243,8 +253,9 @@ describe('activateUpdateAction / rollbackUpdateAction', () => {
   const AAPANEL = {
     ...CONFIGURED,
     deploymentMode: 'aapanel' as const,
-    aapanelServerId: 's1',
-    aapanelProject: 'panel',
+    selfBaseUrl: 'https://127.0.0.1:8888',
+    hasSelfKey: true,
+    selfProject: 'panel',
     stagedVersion: '1.2.0',
     previousVersion: '1.0.0',
   };
@@ -259,8 +270,13 @@ describe('activateUpdateAction / rollbackUpdateAction', () => {
 
   beforeEach(() => {
     settingsMock.getUpdateSettings.mockResolvedValue(AAPANEL);
+    settingsMock.getSelfRestartConfig.mockResolvedValue({
+      baseUrl: 'https://127.0.0.1:8888',
+      apiSkEnc: 'enc',
+      insecureTLS: true,
+      project: 'panel',
+    });
     deployMock.getDeployAdapter.mockReturnValue(okAdapter());
-    prismaMock.server.findUnique.mockResolvedValue({baseUrl: 'https://p', apiSkEnc: 'enc', insecureTLS: true});
     aapanelMock.batchOperation.mockClear();
   });
 
@@ -275,14 +291,9 @@ describe('activateUpdateAction / rollbackUpdateAction', () => {
     expect(await activateUpdateAction()).toEqual({ok: false, error: 'nothing-staged'});
   });
 
-  it('errors when aaPanel mode is not fully configured', async () => {
-    settingsMock.getUpdateSettings.mockResolvedValue({...AAPANEL, aapanelProject: null});
-    expect(await activateUpdateAction()).toEqual({ok: false, error: 'aapanel-not-configured'});
-  });
-
-  it('errors when the referenced server no longer exists', async () => {
-    prismaMock.server.findUnique.mockResolvedValue(null);
-    expect(await activateUpdateAction()).toEqual({ok: false, error: 'server-not-found'});
+  it('errors when self-restart is not configured', async () => {
+    settingsMock.getSelfRestartConfig.mockResolvedValue(null);
+    expect(await activateUpdateAction()).toEqual({ok: false, error: 'self-restart-not-configured'});
   });
 
   it('activates the staged version and wires the aaPanel restart', async () => {

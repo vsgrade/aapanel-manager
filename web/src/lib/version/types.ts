@@ -9,6 +9,12 @@ export interface UpdateSettingsView {
   githubRepo: string;
   /** Whether a private-repo token is stored (the token itself is never sent). */
   hasToken: boolean;
+  /** Self-restart: the panel's own aaPanel, used to restart its own Node project. */
+  selfBaseUrl: string | null;
+  /** Whether a self-restart api_sk is stored (the key itself is never sent). */
+  hasSelfKey: boolean;
+  selfInsecureTLS: boolean;
+  selfProject: string | null;
   aapanelServerId: string | null;
   aapanelProject: string | null;
   startScript: string | null;
