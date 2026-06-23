@@ -1,8 +1,9 @@
 import 'server-only';
 import {spawn, execFile} from 'node:child_process';
-import {openSync, closeSync, writeFileSync, readFileSync, rmSync, mkdirSync} from 'node:fs';
+import {openSync, closeSync, writeFileSync, readFileSync, renameSync, rmSync, mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {promisify} from 'node:util';
+import type {UpdateStatus} from './update-status';
 
 const execFileAsync = promisify(execFile);
 
@@ -22,6 +23,8 @@ export interface UpdatePaths {
   lock: string;
   /** Append-only log of the detached updater (where the admin reads failures). */
   log: string;
+  /** Structured step-by-step progress the UI polls (JSON; see UpdateStatus). */
+  status: string;
   /** Pre-update pg_dump backups. */
   backupsDir: string;
 }
@@ -31,8 +34,28 @@ export function updatePaths(repoRoot: string): UpdatePaths {
   return {
     lock: path.join(repoRoot, '.update.lock'),
     log: path.join(repoRoot, '.update.log'),
+    status: path.join(repoRoot, '.update.status'),
     backupsDir: path.join(repoRoot, '.update-backups'),
   };
+}
+
+/**
+ * Atomically persists the update progress (write to a temp file + rename) so a
+ * concurrent reader never sees a half-written JSON document.
+ */
+export function writeUpdateStatus(statusPath: string, status: UpdateStatus): void {
+  const tmp = `${statusPath}.tmp`;
+  writeFileSync(tmp, JSON.stringify(status));
+  renameSync(tmp, statusPath);
+}
+
+/** Reads the last persisted update progress, or null when absent/unreadable. */
+export function readUpdateStatus(statusPath: string): UpdateStatus | null {
+  try {
+    return JSON.parse(readFileSync(statusPath, 'utf8')) as UpdateStatus;
+  } catch {
+    return null;
+  }
 }
 
 export interface LockInfo {
@@ -93,16 +116,22 @@ export function releaseUpdateLock(lockPath: string): void {
  * Spawns the detached git self-update runner. It logs to `<repoRoot>/.update.log`
  * and outlives the panel restart it triggers. `webDir` is the web app directory
  * (the runner's cwd); the runner resolves the repo root itself.
+ *
+ * We launch via the CURRENT node binary (`process.execPath`) running tsx's CLI
+ * module directly, instead of the `node_modules/.bin/tsx` shim. The shim relies
+ * on its `#!/usr/bin/env node` shebang resolving a node on PATH — which is
+ * exactly what is unreliable on aaPanel (node lives in /www/server/nodejs/<v>/bin
+ * and is not always on PATH). `process.execPath` is always the right node.
  */
 export function launchGitUpdate(opts: {webDir: string; logPath: string; kind: 'update' | 'rollback'; target: string}): void {
   const {webDir, logPath, kind, target} = opts;
   mkdirSync(path.dirname(logPath), {recursive: true});
   const out = openSync(logPath, 'a');
   try {
-    const tsxBin = path.join(webDir, 'node_modules', '.bin', 'tsx');
+    const tsxCli = path.join(webDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
     const child = spawn(
-      tsxBin,
-      ['--env-file-if-exists=.env', '--tsconfig', 'tsconfig.worker.json', 'scripts/git-self-update.ts', kind, target],
+      process.execPath,
+      [tsxCli, '--env-file-if-exists=.env', '--tsconfig', 'tsconfig.worker.json', 'scripts/git-self-update.ts', kind, target],
       {cwd: webDir, detached: true, stdio: ['ignore', out, out], env: process.env},
     );
     child.unref();

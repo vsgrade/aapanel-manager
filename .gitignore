@@ -25,6 +25,7 @@ out/
 
 # Самообновление (git-режим): per-instance runtime-артефакты — не коммитить
 .update.lock
+.update.status
 .update-backups/
 
 # Артефакты MCP-браузера (скриншоты, снапшоты)
